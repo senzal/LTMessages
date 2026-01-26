@@ -2,7 +2,7 @@
 
 A [Blish HUD](https://blishhud.com/) module for Guild Wars 2 that enables Commanders and Lieutenant Tags to quickly send pre-configured messages to squad or subgroup chat with a single click.
 
-[![Version](https://img.shields.io/badge/version-0.6.0-blue.svg)](https://github.com/senzal/LTMessages/releases)
+[![Version](https://img.shields.io/badge/version-0.7.0-blue.svg)](https://github.com/senzal/LTMessages/releases)
 [![Blish HUD](https://img.shields.io/badge/Blish%20HUD-1.2.0%2B-orange.svg)](https://blishhud.com/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -88,9 +88,10 @@ Alternatively, edit the messages file directly:
 ```
 # Lines starting with # are comments
 Title,Message
-Stack,Stack on tag
-Stability,Need stability
-Water,Drop water fields
+Moving,Tag is moving
+Stack,Stack on Tag
+HP-Combat,Please let Tag start the combat hp!
+HP-Commune,Commune with HP and then stack on tag!
 ```
 - **Title**: Max 16 characters (shown in menu)
 - **Message**: Max 200 characters (configurable)
@@ -111,17 +112,24 @@ Water,Drop water fields
 
 ## Default Messages
 
-The module comes with 10 pre-configured messages:
-- Stack on tag
-- Need stability
-- Drop water fields
-- Stealth up
-- Pushing in
-- Fall back to tag
-- Need rez on tag
-- Follow tag closely
-- Spread out
-- Focus target
+The module comes with 17 pre-configured messages:
+- Tag is moving
+- Stack on Tag
+- Please let Tag start the combat hp!
+- Commune with HP and then stack on tag!
+- Port is on the marker
+- F the Vista and then Stack on Tag
+- Point of Interest on Tag!
+- Bunny up for CC
+- Take the Waypoint.
+- Woosh the Waypoint
+- If it is red make it dead!
+- Don't stand in the red circles
+- Watch for the bounty mechanics
+- If you get lost ask for help!
+- We need 1-2 people to guard this spot
+- Special Squad can come get their loot
+- Please don't drop EMPs or other items. Let Commander setup stations.
 
 ## How It Works
 
@@ -222,7 +230,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Changelog
 
-### v0.6.0 (Current)
+### v0.7.0 (Current)
+- Updated default messages with 17 comprehensive commander/LT messages
+- Added Hero Point (HP) combat and commune messages
+- Added waypoint, vista, and POI navigation messages
+- Added tactical messages (bunny, guard, mechanics)
+- Added special squad and EMP drop warnings
+
+### v0.6.0
 - Added LT Mode toggle for safety
 - Corner icon shows LT Mode status in tooltip
 - Warning notification when trying to send with LT Mode disabled

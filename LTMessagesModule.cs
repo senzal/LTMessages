@@ -440,16 +440,23 @@ namespace LTMessages
             // Embedded default messages - always available even if file doesn't exist
             return new List<MessageEntry>
             {
-                new MessageEntry("Stack", "Stack on tag"),
-                new MessageEntry("Stability", "Need stability"),
-                new MessageEntry("Water", "Drop water fields"),
-                new MessageEntry("Stealth", "Stealth up"),
-                new MessageEntry("Push", "Pushing in"),
-                new MessageEntry("Fall Back", "Fall back to tag"),
-                new MessageEntry("Rez", "Need rez on tag"),
-                new MessageEntry("Follow", "Follow tag closely"),
-                new MessageEntry("Spread", "Spread out"),
-                new MessageEntry("Focus", "Focus target")
+                new MessageEntry("Moving", "Tag is moving"),
+                new MessageEntry("Stack", "Stack on Tag"),
+                new MessageEntry("HP-Combat", "Please let Tag start the combat hp!"),
+                new MessageEntry("HP-Commune", "Commune with HP and then stack on tag!"),
+                new MessageEntry("Port", "Port is on the marker"),
+                new MessageEntry("F-Vist", "F the Vista and then Stack on Tag"),
+                new MessageEntry("POI", "Point of Interest on Tag!"),
+                new MessageEntry("Bunny", "Bunny up for CC"),
+                new MessageEntry("Take-WP", "Take the Waypoint."),
+                new MessageEntry("Woosh-WP", "Woosh the Waypoint"),
+                new MessageEntry("Red", "If it is red make it dead!"),
+                new MessageEntry("Red-Circles", "Don't stand in the red circles"),
+                new MessageEntry("Mech", "Watch for the bounty mechanics"),
+                new MessageEntry("Help", "If you get lost ask for help!"),
+                new MessageEntry("Guard", "We need 1-2 people to guard this spot"),
+                new MessageEntry("Specials", "Special Squad can come get their loot"),
+                new MessageEntry("No-Drop", "Please don't drop EMPs or other items. Let Commander setup stations.")
             };
         }
 
@@ -564,16 +571,23 @@ namespace LTMessages
                     "# Lines starting with # are comments and ignored",
                     "# ========================================",
                     "",
-                    "Stack,Stack on tag",
-                    "Stability,Need stability",
-                    "Water,Drop water fields",
-                    "Stealth,Stealth up",
-                    "Push,Pushing in",
-                    "Fall Back,Fall back to tag",
-                    "Rez,Need rez on tag",
-                    "Follow,Follow tag closely",
-                    "Spread,Spread out",
-                    "Focus,Focus target"
+                    "Moving,Tag is moving",
+                    "Stack,Stack on Tag",
+                    "HP-Combat,Please let Tag start the combat hp!",
+                    "HP-Commune,Commune with HP and then stack on tag!",
+                    "Port,Port is on the marker",
+                    "F-Vist, F the Vista and then Stack on Tag",
+                    "POI,Point of Interest on Tag!",
+                    "Bunny,Bunny up for CC",
+                    "Take-WP,Take the Waypoint.",
+                    "Woosh-WP,Woosh the Waypoint",
+                    "Red,If it is red make it dead!",
+                    "Red-Circles,Don't stand in the red circles",
+                    "Mech,Watch for the bounty mechanics",
+                    "Help,If you get lost ask for help!",
+                    "Guard,We need 1-2 people to guard this spot",
+                    "Specials,Special Squad can come get their loot",
+                    "No-Drop,Please don't drop EMPs or other items. Let Commander setup stations."
                 };
 
                 File.WriteAllLines(filePath, defaultMessages);
