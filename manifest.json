@@ -1,0 +1,24 @@
+{
+  "name": "LT Messages",
+  "version": "0.6.0",
+  "namespace": "bh.lt.messages",
+  "package": "LTMessages.dll",
+  "manifest_version": 1,
+
+  "description": "Quick message sender for Lieutenant Tags to send pre-configured messages to squad chat.",
+  "dependencies": {
+    "bh.blishhud": ">=1.2.0"
+  },
+  "url": "https://github.com/yourusername/LTMessages",
+  "contributors": [
+    {
+      "name": "Senzall",
+      "username": "YourGw2AccountName.1234"
+    }
+  ],
+
+  "directories": [],
+  "enabled_without_gw2": false,
+
+  "api_permissions": {}
+}

@@ -1,0 +1,1421 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel.Composition;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
+using Blish_HUD;
+using Blish_HUD.Controls;
+using Blish_HUD.Input;
+using Blish_HUD.Modules;
+using Blish_HUD.Modules.Managers;
+using Blish_HUD.Settings;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
+
+namespace LTMessages
+{
+    [Export(typeof(Module))]
+    public class LTMessagesModule : Module
+    {
+        private static readonly Logger Logger = Logger.GetLogger<LTMessagesModule>();
+
+        // Module parameters
+        internal SettingsManager SettingsManager => this.ModuleParameters.SettingsManager;
+        internal ContentsManager ContentsManager => this.ModuleParameters.ContentsManager;
+
+        // Settings
+        private SettingEntry<string> _messageFilePath;
+        private SettingEntry<bool> _autoSendEnabled;
+        private SettingEntry<int> _sendDelayMs;
+        private SettingEntry<bool> _showCornerIcon;
+        private SettingEntry<KeyBinding> _popupKeybind;
+        private SettingEntry<ChatMethod> _chatMethod;
+        private SettingEntry<ChatCommand> _chatCommand;
+        private SettingEntry<int> _maxMessageLength;
+        private SettingEntry<bool> _ltModeEnabled;
+
+        // Enums for settings
+        private enum ChatMethod
+        {
+            ShiftEnter,      // Direct squad chat (Shift+Enter)
+            SlashCommand     // Chat command (Shift+/)
+        }
+
+        private enum ChatCommand
+        {
+            Squad,      // /squad
+            Subgroup    // /subgroup
+        }
+
+        // UI Components
+        private CornerIcon _cornerIcon;
+        private ContextMenuStrip _messageContextMenu;
+        private Panel _popupWindow;
+        private FlowPanel _messageFlowPanel;
+        private Panel _editorWindow;
+        private FlowPanel _editorFlowPanel;
+        private Panel _editDialogWindow;
+        private TextBox _editTitleTextBox;
+        private TextBox _editMessageTextBox;
+        private MessageEntry _editingMessage;
+        private int _editingMessageIndex = -1;
+
+        // Data
+        private List<MessageEntry> _messages = new List<MessageEntry>();
+        private FileSystemWatcher _fileWatcher;
+
+        // Constants
+        private static readonly string DefaultFilePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            @"Guild Wars 2\addons\blishhud\ltmessages\messages.txt");
+        private const int DefaultSendDelayMs = 200;
+        private const int DefaultMaxMessageLength = 200;  // GW2 chat limit
+
+        #region Windows API for Keyboard Input
+
+        [DllImport("user32.dll")]
+        private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+        [DllImport("user32.dll")]
+        private static extern ushort MapVirtualKey(uint uCode, uint uMapType);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+        [DllImport("user32.dll")]
+        private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
+
+        [DllImport("user32.dll")]
+        private static extern short VkKeyScan(char ch);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct INPUT
+        {
+            public uint type;
+            public INPUTUNION U;
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        private struct INPUTUNION
+        {
+            [FieldOffset(0)]
+            public MOUSEINPUT mi;
+            [FieldOffset(0)]
+            public KEYBDINPUT ki;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct KEYBDINPUT
+        {
+            public ushort wVk;
+            public ushort wScan;
+            public uint dwFlags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MOUSEINPUT
+        {
+            public int dx;
+            public int dy;
+            public uint mouseData;
+            public uint dwFlags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
+        private const uint INPUT_KEYBOARD = 1;
+        private const uint KEYEVENTF_KEYDOWN = 0x0000;
+        private const uint KEYEVENTF_KEYUP = 0x0002;
+        private const ushort VK_RETURN = 0x0D;
+        private const ushort VK_SHIFT = 0x10;
+        private const ushort VK_CONTROL = 0x11;
+        private const ushort VK_V = 0x56;
+        private const ushort VK_SLASH = 0xBF;  // Forward slash key
+
+        private static void SendKeyPress(ushort keyCode, bool shift = false, bool ctrl = false)
+        {
+            List<INPUT> inputs = new List<INPUT>();
+
+            // Press modifier keys first
+            if (shift)
+                inputs.Add(CreateKeyInput(VK_SHIFT, true));
+            if (ctrl)
+                inputs.Add(CreateKeyInput(VK_CONTROL, true));
+
+            // Press main key
+            inputs.Add(CreateKeyInput(keyCode, true));
+
+            // Release main key
+            inputs.Add(CreateKeyInput(keyCode, false));
+
+            // Release modifier keys
+            if (ctrl)
+                inputs.Add(CreateKeyInput(VK_CONTROL, false));
+            if (shift)
+                inputs.Add(CreateKeyInput(VK_SHIFT, false));
+
+            uint result = SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf(typeof(INPUT)));
+
+            if (result == 0)
+            {
+                Logger.Warn($"SendInput failed for keyCode {keyCode}, shift={shift}, ctrl={ctrl}");
+            }
+            else
+            {
+                Logger.Debug($"SendInput sent {result} inputs successfully");
+            }
+        }
+
+        private static async Task TypeString(string text, int delayMs = 20)
+        {
+            foreach (char c in text)
+            {
+                // Get virtual key code and shift state for this character
+                short vkAndShift = VkKeyScan(c);
+                if (vkAndShift == -1)
+                {
+                    Logger.Warn($"Could not get virtual key for character: {c}");
+                    continue;
+                }
+
+                byte vk = (byte)(vkAndShift & 0xFF);
+                byte shiftState = (byte)((vkAndShift >> 8) & 0xFF);
+
+                // Check if shift is needed (bit 0 of shift state)
+                bool needShift = (shiftState & 1) != 0;
+
+                SendKeyPress(vk, shift: needShift);
+                await Task.Delay(delayMs);
+            }
+        }
+
+        private static INPUT CreateKeyInput(ushort keyCode, bool keyDown)
+        {
+            // Get scan code from virtual key code (required for some games)
+            ushort scanCode = (ushort)MapVirtualKey(keyCode, 0);
+
+            return new INPUT
+            {
+                type = INPUT_KEYBOARD,
+                U = new INPUTUNION
+                {
+                    ki = new KEYBDINPUT
+                    {
+                        wVk = keyCode,
+                        wScan = scanCode,
+                        dwFlags = keyDown ? KEYEVENTF_KEYDOWN : KEYEVENTF_KEYUP,
+                        time = 0,
+                        dwExtraInfo = IntPtr.Zero
+                    }
+                }
+            };
+        }
+
+        private static IntPtr FindGW2Window()
+        {
+            // Get the current foreground window
+            IntPtr hwnd = GetForegroundWindow();
+
+            // Check if it's GW2
+            System.Text.StringBuilder title = new System.Text.StringBuilder(256);
+            GetWindowText(hwnd, title, title.Capacity);
+
+            if (title.ToString().Contains("Guild Wars 2"))
+            {
+                return hwnd;
+            }
+
+            // If not, try to find it by checking if we're injected into GW2
+            // Blish HUD runs inside GW2, so the game window should be findable
+            return hwnd;
+        }
+
+        private static void FocusGameWindow()
+        {
+            try
+            {
+                IntPtr gameWindow = FindGW2Window();
+                if (gameWindow != IntPtr.Zero)
+                {
+                    SetForegroundWindow(gameWindow);
+                    Logger.Debug("Focused GW2 window");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn(ex, "Failed to focus game window");
+            }
+        }
+
+        #endregion
+
+        [ImportingConstructor]
+        public LTMessagesModule([Import("ModuleParameters")] ModuleParameters moduleParameters)
+            : base(moduleParameters)
+        {
+        }
+
+        protected override void DefineSettings(SettingCollection settings)
+        {
+            _messageFilePath = settings.DefineSetting(
+                "MessageFilePath",
+                DefaultFilePath,
+                () => "Message File Path",
+                () => "Path to messages.txt - Edit this file with any text editor to customize your messages. File auto-reloads when changed.");
+
+            _popupKeybind = settings.DefineSetting(
+                "PopupKeybind",
+                new KeyBinding(Keys.Home),
+                () => "Popup Keybind",
+                () => "Press this key to show the message popup at your cursor");
+
+            _showCornerIcon = settings.DefineSetting(
+                "ShowCornerIcon",
+                true,
+                () => "Show Corner Icon",
+                () => "Display an icon in the Blish HUD menu for alternative access");
+
+            _ltModeEnabled = settings.DefineSetting(
+                "LTModeEnabled",
+                true,
+                () => "LT Mode Enabled",
+                () => "Enable this when you are a Lieutenant or Commander. Messages won't send when disabled.");
+
+            _autoSendEnabled = settings.DefineSetting(
+                "AutoSendEnabled",
+                false,
+                () => "Auto-send messages",
+                () => "Automatically send messages to chat (if disabled, copies to clipboard only)");
+
+            _sendDelayMs = settings.DefineSetting(
+                "SendDelayMs",
+                DefaultSendDelayMs,
+                () => "Send delay (ms)",
+                () => "Delay between keystrokes when auto-sending (adjust if messages don't send reliably)");
+            _sendDelayMs.SetRange(50, 500);
+
+            _chatMethod = settings.DefineSetting(
+                "ChatMethod",
+                ChatMethod.ShiftEnter,
+                () => "Chat Method",
+                () => "Shift+Enter = Direct squad chat | Shift+/ = Use chat command");
+
+            _chatCommand = settings.DefineSetting(
+                "ChatCommand",
+                ChatCommand.Squad,
+                () => "Chat Command",
+                () => "Which command to use when Chat Method is set to Shift+/ (squad or subgroup)");
+
+            _maxMessageLength = settings.DefineSetting(
+                "MaxMessageLength",
+                DefaultMaxMessageLength,
+                () => "Max Message Length",
+                () => "Maximum characters per message (GW2 limit is around 200)");
+            _maxMessageLength.SetRange(50, 500);
+
+            // Add button to open message editor
+            var openEditorButton = settings.DefineSetting(
+                "OpenEditorButton",
+                false,
+                () => "Open Message Editor",
+                () => "Toggle this on to open the in-game message editor");
+
+            openEditorButton.SettingChanged += (s, e) =>
+            {
+                if (e.NewValue && !e.PreviousValue)
+                {
+                    ShowEditorWindow();
+
+                    // Reset button
+                    Task.Run(async () =>
+                    {
+                        await Task.Delay(100);
+                        openEditorButton.Value = false;
+                    });
+                }
+            };
+
+            // Update file watcher when path changes
+            _messageFilePath.SettingChanged += OnFilePathChanged;
+        }
+
+        protected override async Task LoadAsync()
+        {
+            Logger.Info("Loading LT Messages module...");
+
+            // Initialize with embedded defaults first (module is immediately functional)
+            _messages = GetDefaultMessages();
+            Logger.Info($"Initialized with {_messages.Count} default messages");
+
+            // Load messages from file (will override defaults if file exists)
+            LoadMessagesFromFile();
+
+            // Setup file watcher for live reload
+            SetupFileWatcher();
+
+            // Create corner icon if enabled
+            if (_showCornerIcon.Value)
+            {
+                CreateCornerIcon();
+            }
+
+            // Listen for corner icon setting changes
+            _showCornerIcon.SettingChanged += OnShowCornerIconChanged;
+
+            // Create the popup window (hidden initially)
+            CreatePopupWindow();
+
+            // Register keybind
+            _popupKeybind.Value.Enabled = true;
+            _popupKeybind.Value.Activated += OnPopupKeybindActivated;
+
+            Logger.Info("LT Messages module loaded successfully.");
+
+            await Task.CompletedTask;
+        }
+
+        protected override void Update(GameTime gameTime)
+        {
+            // Check for ESC key to close popup
+            if (_popupWindow != null && _popupWindow.Visible)
+            {
+                if (GameService.Input.Keyboard.KeysDown.Contains(Keys.Escape))
+                {
+                    HidePopup();
+                }
+            }
+        }
+
+        protected override void Unload()
+        {
+            Logger.Info("Unloading LT Messages module...");
+
+            // Unsubscribe from events
+            _messageFilePath.SettingChanged -= OnFilePathChanged;
+            _showCornerIcon.SettingChanged -= OnShowCornerIconChanged;
+
+            if (_popupKeybind?.Value != null)
+            {
+                _popupKeybind.Value.Activated -= OnPopupKeybindActivated;
+                _popupKeybind.Value.Enabled = false;
+            }
+
+            // Dispose file watcher
+            _fileWatcher?.Dispose();
+
+            // Unsubscribe from screen click
+            if (GameService.Graphics.SpriteScreen != null)
+            {
+                GameService.Graphics.SpriteScreen.LeftMouseButtonPressed -= OnScreenClicked;
+            }
+
+            // Dispose UI
+            _cornerIcon?.Dispose();
+            _messageContextMenu?.Dispose();
+            _popupWindow?.Dispose();
+            _editorWindow?.Dispose();
+            _editDialogWindow?.Dispose();
+
+            // Clear messages
+            _messages.Clear();
+
+            Logger.Info("LT Messages module unloaded.");
+        }
+
+        #region File Operations
+
+        private List<MessageEntry> GetDefaultMessages()
+        {
+            // Embedded default messages - always available even if file doesn't exist
+            return new List<MessageEntry>
+            {
+                new MessageEntry("Stack", "Stack on tag"),
+                new MessageEntry("Stability", "Need stability"),
+                new MessageEntry("Water", "Drop water fields"),
+                new MessageEntry("Stealth", "Stealth up"),
+                new MessageEntry("Push", "Pushing in"),
+                new MessageEntry("Fall Back", "Fall back to tag"),
+                new MessageEntry("Rez", "Need rez on tag"),
+                new MessageEntry("Follow", "Follow tag closely"),
+                new MessageEntry("Spread", "Spread out"),
+                new MessageEntry("Focus", "Focus target")
+            };
+        }
+
+        private void LoadMessagesFromFile()
+        {
+            string filePath = _messageFilePath.Value;
+
+            try
+            {
+                // Create directory if it doesn't exist
+                string directory = Path.GetDirectoryName(filePath);
+                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                    Logger.Info($"Created directory: {directory}");
+                }
+
+                // Create default file if it doesn't exist
+                if (!File.Exists(filePath))
+                {
+                    CreateDefaultMessageFile(filePath);
+                    // Use embedded defaults until file is created
+                    _messages = GetDefaultMessages();
+                    RefreshMessageUI();
+                    return;
+                }
+
+                // Read and parse the file
+                var lines = File.ReadAllLines(filePath);
+                var newMessages = new List<MessageEntry>();
+
+                foreach (var line in lines)
+                {
+                    if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
+                        continue; // Skip empty lines and comments
+
+                    var parts = line.Split(new[] { ',' }, 2);
+                    if (parts.Length != 2)
+                    {
+                        Logger.Warn($"Malformed line in message file (expected 'Title,Message'): {line}");
+                        continue;
+                    }
+
+                    string title = parts[0].Trim();
+                    string message = parts[1].Trim();
+
+                    if (string.IsNullOrEmpty(title) || string.IsNullOrEmpty(message))
+                    {
+                        Logger.Warn($"Skipping line with empty title or message: {line}");
+                        continue;
+                    }
+
+                    // Enforce max message length
+                    int maxLen = _maxMessageLength?.Value ?? DefaultMaxMessageLength;
+                    if (message.Length > maxLen)
+                    {
+                        message = message.Substring(0, maxLen);
+                        Logger.Warn($"Message truncated to {maxLen} characters: {message}");
+                    }
+
+                    // MessageEntry will auto-truncate title if needed
+                    var entry = new MessageEntry(title, message);
+
+                    if (title.Length > 16)
+                        Logger.Warn($"Title '{title}' truncated to 16 characters: '{entry.Title}'");
+
+                    newMessages.Add(entry);
+                }
+
+                _messages = newMessages;
+                Logger.Info($"Loaded {_messages.Count} messages from {filePath}");
+
+                // Refresh UI
+                RefreshMessageUI();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, $"Error loading messages from {filePath}");
+
+                // Fall back to embedded defaults
+                _messages = GetDefaultMessages();
+                Logger.Info("Loaded embedded default messages as fallback");
+
+                ScreenNotification.ShowNotification(
+                    "LT Messages: Failed to load message file. Using default messages. Check logs for details.",
+                    ScreenNotification.NotificationType.Warning);
+
+                // Refresh UI with defaults
+                RefreshMessageUI();
+            }
+        }
+
+        private void CreateDefaultMessageFile(string filePath)
+        {
+            try
+            {
+                var defaultMessages = new[]
+                {
+                    "# ========================================",
+                    "# LT Messages Configuration File",
+                    "# ========================================",
+                    "# ",
+                    "# TO EDIT: Open this file in Notepad, VSCode, or any text editor",
+                    "# FILE LOCATION: " + filePath,
+                    "# ",
+                    "# After editing, save the file - changes reload automatically!",
+                    "# ",
+                    "# FORMAT: Title,Message",
+                    "#   Title: max 16 characters (shown in popup menu)",
+                    "#   Message: max 200 characters (default GW2 chat limit)",
+                    "# ",
+                    "# Lines starting with # are comments and ignored",
+                    "# ========================================",
+                    "",
+                    "Stack,Stack on tag",
+                    "Stability,Need stability",
+                    "Water,Drop water fields",
+                    "Stealth,Stealth up",
+                    "Push,Pushing in",
+                    "Fall Back,Fall back to tag",
+                    "Rez,Need rez on tag",
+                    "Follow,Follow tag closely",
+                    "Spread,Spread out",
+                    "Focus,Focus target"
+                };
+
+                File.WriteAllLines(filePath, defaultMessages);
+                Logger.Info($"Created default message file at {filePath}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, $"Failed to create default message file at {filePath}");
+            }
+        }
+
+        private void SetupFileWatcher()
+        {
+            try
+            {
+                string filePath = _messageFilePath.Value;
+                string directory = Path.GetDirectoryName(filePath);
+                string fileName = Path.GetFileName(filePath);
+
+                if (string.IsNullOrEmpty(directory) || string.IsNullOrEmpty(fileName))
+                    return;
+
+                _fileWatcher?.Dispose();
+
+                _fileWatcher = new FileSystemWatcher
+                {
+                    Path = directory,
+                    Filter = fileName,
+                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size
+                };
+
+                _fileWatcher.Changed += OnFileChanged;
+                _fileWatcher.EnableRaisingEvents = true;
+
+                Logger.Info($"File watcher setup for {filePath}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to setup file watcher");
+            }
+        }
+
+        private void OnFileChanged(object sender, FileSystemEventArgs e)
+        {
+            // Debounce file changes (file can trigger multiple events)
+            Thread.Sleep(100);
+            Logger.Info("Message file changed, reloading...");
+            LoadMessagesFromFile();
+        }
+
+        private void OnFilePathChanged(object sender, ValueChangedEventArgs<string> e)
+        {
+            LoadMessagesFromFile();
+            SetupFileWatcher();
+        }
+
+        #endregion
+
+        #region UI Creation
+
+        private void CreateCornerIcon()
+        {
+            try
+            {
+                // Use a built-in texture or load from ref folder
+                var iconTexture = ContentsManager.GetTexture("icon.png")
+                    ?? GameService.Content.DatAssetCache.GetTextureFromAssetId(156027); // Generic icon
+
+                _cornerIcon = new CornerIcon
+                {
+                    Icon = iconTexture,
+                    BasicTooltipText = "LT Messages - Click to show messages",
+                    Priority = 1645843599, // Random constant
+                    Parent = GameService.Graphics.SpriteScreen
+                };
+
+                _cornerIcon.Click += OnCornerIconClicked;
+
+                // Update tooltip based on LT mode
+                UpdateCornerIconTooltip();
+                _ltModeEnabled.SettingChanged += (s, e) => UpdateCornerIconTooltip();
+
+                Logger.Info("Corner icon created");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to create corner icon");
+            }
+        }
+
+        private void UpdateCornerIconTooltip()
+        {
+            if (_cornerIcon != null)
+            {
+                string status = _ltModeEnabled.Value ? "ENABLED" : "DISABLED";
+                _cornerIcon.BasicTooltipText = $"LT Messages - Click to show messages\nLT Mode: {status}";
+            }
+        }
+
+        private void CreatePopupWindow()
+        {
+            _popupWindow = new Panel
+            {
+                Size = new Point(220, 300),
+                Location = new Point(100, 100),
+                Visible = false,
+                ZIndex = 9999,
+                Parent = GameService.Graphics.SpriteScreen,
+                BackgroundColor = new Color(25, 20, 15, 220),  // GW2-style dark brown
+                ShowBorder = true
+            };
+
+            _messageFlowPanel = new FlowPanel
+            {
+                FlowDirection = ControlFlowDirection.SingleTopToBottom,
+                WidthSizingMode = SizingMode.Fill,
+                HeightSizingMode = SizingMode.Fill,
+                CanScroll = true,
+                Location = new Point(5, 5),
+                Size = new Point(210, 290),
+                Parent = _popupWindow,
+                OuterControlPadding = new Vector2(8, 8),
+                ControlPadding = new Vector2(0, 2)
+            };
+
+            // Add click handler to screen to close popup when clicking outside
+            GameService.Graphics.SpriteScreen.LeftMouseButtonPressed += OnScreenClicked;
+
+            // Populate with messages
+            RefreshMessageUI();
+        }
+
+        private void RefreshMessageUI()
+        {
+            // Update popup window
+            if (_messageFlowPanel != null)
+            {
+                _messageFlowPanel.ClearChildren();
+
+                foreach (var message in _messages)
+                {
+                    // Create a simple label for each message (no container panel)
+                    var label = new Label
+                    {
+                        Text = message.Title,
+                        Width = 200,
+                        Height = 26,
+                        TextColor = new Color(220, 200, 150, 255),  // GW2 gold color
+                        Font = GameService.Content.DefaultFont16,
+                        ShowShadow = true,
+                        HorizontalAlignment = HorizontalAlignment.Left,
+                        VerticalAlignment = VerticalAlignment.Middle,
+                        AutoSizeHeight = false,
+                        AutoSizeWidth = false,
+                        WrapText = false,
+                        BackgroundColor = new Color(40, 35, 30, 180),
+                        Parent = _messageFlowPanel
+                    };
+
+                    // Capture message in closure
+                    var capturedMessage = message;
+
+                    // Make label clickable
+                    label.Click += (s, e) =>
+                    {
+                        OnMessageSelected(capturedMessage);
+                        HidePopup();
+                    };
+
+                    // Hover effects
+                    label.MouseEntered += (s, e) =>
+                    {
+                        label.BackgroundColor = new Color(60, 50, 40, 200);
+                        label.TextColor = Color.Yellow;
+                    };
+
+                    label.MouseLeft += (s, e) =>
+                    {
+                        label.BackgroundColor = new Color(40, 35, 30, 180);
+                        label.TextColor = new Color(220, 200, 150, 255);
+                    };
+                }
+            }
+
+            // Update context menu
+            if (_cornerIcon != null)
+            {
+                _messageContextMenu?.Dispose();
+                _messageContextMenu = new ContextMenuStrip();
+
+                foreach (var message in _messages)
+                {
+                    var capturedMessage = message;
+                    var menuItem = _messageContextMenu.AddMenuItem(message.Title);
+                    menuItem.Click += (s, e) => OnMessageSelected(capturedMessage);
+                }
+
+                _cornerIcon.Menu = _messageContextMenu;
+            }
+        }
+
+        #endregion
+
+        #region Event Handlers
+
+        private void OnShowCornerIconChanged(object sender, ValueChangedEventArgs<bool> e)
+        {
+            if (e.NewValue && _cornerIcon == null)
+            {
+                CreateCornerIcon();
+            }
+            else if (!e.NewValue && _cornerIcon != null)
+            {
+                _cornerIcon.Dispose();
+                _cornerIcon = null;
+            }
+        }
+
+        private void OnPopupKeybindActivated(object sender, EventArgs e)
+        {
+            ShowPopupAtCursor();
+        }
+
+        private void OnCornerIconClicked(object sender, MouseEventArgs e)
+        {
+            // Show popup at a fixed position near the corner icon
+            ShowPopupAtCursor();
+        }
+
+        private void OnScreenClicked(object sender, MouseEventArgs e)
+        {
+            // Close popup if clicking outside of it
+            if (_popupWindow != null && _popupWindow.Visible)
+            {
+                var mousePos = GameService.Input.Mouse.Position;
+                var popupBounds = _popupWindow.AbsoluteBounds;
+
+                // Check if click is outside the popup
+                if (!popupBounds.Contains(mousePos))
+                {
+                    HidePopup();
+                }
+            }
+        }
+
+        #endregion
+
+        #region Popup Management
+
+        private void ShowPopupAtCursor()
+        {
+            if (_popupWindow == null || _messages.Count == 0)
+                return;
+
+            try
+            {
+                // Get mouse position
+                var mousePos = GameService.Input.Mouse.Position;
+
+                // Adjust window size based on content
+                int itemHeight = 25;
+                int windowHeight = Math.Min(_messages.Count * itemHeight + 20, 400);
+                _popupWindow.Size = new Point(200, windowHeight);
+
+                // Position at cursor, but keep on screen
+                int x = mousePos.X;
+                int y = mousePos.Y;
+
+                // Adjust if near screen edges
+                if (x + _popupWindow.Width > GameService.Graphics.SpriteScreen.Width)
+                    x = GameService.Graphics.SpriteScreen.Width - _popupWindow.Width;
+                if (y + _popupWindow.Height > GameService.Graphics.SpriteScreen.Height)
+                    y = GameService.Graphics.SpriteScreen.Height - _popupWindow.Height;
+
+                if (x < 0) x = 0;
+                if (y < 0) y = 0;
+
+                _popupWindow.Location = new Point(x, y);
+                _popupWindow.Show();
+
+                Logger.Debug($"Showing popup at {x}, {y}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to show popup at cursor");
+            }
+        }
+
+        private void HidePopup()
+        {
+            if (_popupWindow != null)
+            {
+                _popupWindow.Hide();
+            }
+        }
+
+        #endregion
+
+        #region Message Editor
+
+        private void ShowEditorWindow()
+        {
+            if (_editorWindow == null)
+            {
+                CreateEditorWindow();
+            }
+
+            // Center on screen
+            int x = (GameService.Graphics.SpriteScreen.Width - _editorWindow.Width) / 2;
+            int y = (GameService.Graphics.SpriteScreen.Height - _editorWindow.Height) / 2;
+            _editorWindow.Location = new Point(x, y);
+
+            _editorWindow.Show();
+            RefreshEditorUI();
+        }
+
+        private void CreateEditorWindow()
+        {
+            _editorWindow = new Panel
+            {
+                Size = new Point(500, 400),
+                ZIndex = 10000,
+                Parent = GameService.Graphics.SpriteScreen,
+                BackgroundColor = new Color(25, 20, 15, 240),
+                ShowBorder = true,
+                CanScroll = false
+            };
+
+            // Title
+            new Label
+            {
+                Text = "LT Messages Editor",
+                Font = GameService.Content.DefaultFont18,
+                AutoSizeHeight = true,
+                AutoSizeWidth = true,
+                Location = new Point(10, 10),
+                TextColor = new Color(220, 200, 150, 255),
+                ShowShadow = true,
+                Parent = _editorWindow
+            };
+
+            // Close button
+            var closeButton = new StandardButton
+            {
+                Text = "Close",
+                Width = 80,
+                Location = new Point(410, 8),
+                Parent = _editorWindow
+            };
+            closeButton.Click += (s, e) => _editorWindow.Hide();
+
+            // Message list panel
+            _editorFlowPanel = new FlowPanel
+            {
+                FlowDirection = ControlFlowDirection.SingleTopToBottom,
+                WidthSizingMode = SizingMode.Fill,
+                HeightSizingMode = SizingMode.Fill,
+                CanScroll = true,
+                Location = new Point(10, 40),
+                Size = new Point(480, 310),
+                Parent = _editorWindow,
+                OuterControlPadding = new Vector2(5, 5),
+                ControlPadding = new Vector2(0, 3)
+            };
+
+            // Add New Message button
+            var addButton = new StandardButton
+            {
+                Text = "Add New Message",
+                Width = 150,
+                Location = new Point(10, 360),
+                Parent = _editorWindow
+            };
+            addButton.Click += (s, e) => ShowEditDialog(-1, null);
+
+            // Save button
+            var saveButton = new StandardButton
+            {
+                Text = "Save to File",
+                Width = 120,
+                Location = new Point(170, 360),
+                Parent = _editorWindow
+            };
+            saveButton.Click += (s, e) => SaveMessagesToFile();
+        }
+
+        private void RefreshEditorUI()
+        {
+            if (_editorFlowPanel == null) return;
+
+            _editorFlowPanel.ClearChildren();
+
+            for (int i = 0; i < _messages.Count; i++)
+            {
+                var message = _messages[i];
+                var index = i; // Capture for closure
+
+                // Container panel for each message
+                var itemPanel = new Panel
+                {
+                    Width = 460,
+                    Height = 60,
+                    BackgroundColor = new Color(40, 35, 30, 180),
+                    ShowBorder = true,
+                    Parent = _editorFlowPanel
+                };
+
+                // Title label
+                new Label
+                {
+                    Text = $"Title: {message.Title}",
+                    Width = 300,
+                    Location = new Point(5, 5),
+                    TextColor = new Color(220, 200, 150, 255),
+                    Font = GameService.Content.DefaultFont14,
+                    Parent = itemPanel
+                };
+
+                // Message label
+                new Label
+                {
+                    Text = $"Message: {message.Message}",
+                    Width = 300,
+                    Location = new Point(5, 25),
+                    TextColor = Color.White,
+                    Font = GameService.Content.DefaultFont12,
+                    Parent = itemPanel
+                };
+
+                // Edit button
+                var editButton = new StandardButton
+                {
+                    Text = "Edit",
+                    Width = 60,
+                    Location = new Point(320, 10),
+                    Parent = itemPanel
+                };
+                editButton.Click += (s, e) => ShowEditDialog(index, message);
+
+                // Delete button
+                var deleteButton = new StandardButton
+                {
+                    Text = "Delete",
+                    Width = 60,
+                    Location = new Point(390, 10),
+                    Parent = itemPanel
+                };
+                deleteButton.Click += (s, e) => DeleteMessage(index);
+            }
+        }
+
+        private void ShowEditDialog(int messageIndex, MessageEntry message)
+        {
+            _editingMessageIndex = messageIndex;
+            _editingMessage = message;
+
+            if (_editDialogWindow == null)
+            {
+                CreateEditDialog();
+            }
+
+            // Set values
+            if (message != null)
+            {
+                _editTitleTextBox.Text = message.Title;
+                _editMessageTextBox.Text = message.Message;
+            }
+            else
+            {
+                _editTitleTextBox.Text = "";
+                _editMessageTextBox.Text = "";
+            }
+
+            // Center on screen
+            int x = (GameService.Graphics.SpriteScreen.Width - _editDialogWindow.Width) / 2;
+            int y = (GameService.Graphics.SpriteScreen.Height - _editDialogWindow.Height) / 2;
+            _editDialogWindow.Location = new Point(x, y);
+
+            _editDialogWindow.Show();
+        }
+
+        private void CreateEditDialog()
+        {
+            _editDialogWindow = new Panel
+            {
+                Size = new Point(400, 250),
+                ZIndex = 10001,
+                Parent = GameService.Graphics.SpriteScreen,
+                BackgroundColor = new Color(25, 20, 15, 250),
+                ShowBorder = true
+            };
+
+            // Title
+            new Label
+            {
+                Text = "Edit Message",
+                Font = GameService.Content.DefaultFont16,
+                AutoSizeHeight = true,
+                AutoSizeWidth = true,
+                Location = new Point(10, 10),
+                TextColor = new Color(220, 200, 150, 255),
+                Parent = _editDialogWindow
+            };
+
+            // Title label
+            new Label
+            {
+                Text = "Title (max 16 chars):",
+                Location = new Point(10, 45),
+                Width = 200,
+                TextColor = Color.White,
+                Parent = _editDialogWindow
+            };
+
+            // Title textbox
+            _editTitleTextBox = new TextBox
+            {
+                Location = new Point(10, 65),
+                Width = 380,
+                MaxLength = 16,
+                Parent = _editDialogWindow
+            };
+
+            // Message label
+            new Label
+            {
+                Text = "Message (max 200 chars):",
+                Location = new Point(10, 100),
+                Width = 200,
+                TextColor = Color.White,
+                Parent = _editDialogWindow
+            };
+
+            // Message textbox
+            _editMessageTextBox = new TextBox
+            {
+                Location = new Point(10, 120),
+                Width = 380,
+                MaxLength = 200,
+                Parent = _editDialogWindow
+            };
+
+            // Character counter for message
+            var charCountLabel = new Label
+            {
+                Text = "0 / 200",
+                Location = new Point(10, 145),
+                Width = 100,
+                TextColor = Color.Gray,
+                Font = GameService.Content.DefaultFont12,
+                Parent = _editDialogWindow
+            };
+
+            _editMessageTextBox.TextChanged += (s, e) =>
+            {
+                charCountLabel.Text = $"{_editMessageTextBox.Text.Length} / 200";
+            };
+
+            // Save button
+            var saveButton = new StandardButton
+            {
+                Text = "Save",
+                Width = 80,
+                Location = new Point(220, 200),
+                Parent = _editDialogWindow
+            };
+            saveButton.Click += (s, e) => SaveEditedMessage();
+
+            // Cancel button
+            var cancelButton = new StandardButton
+            {
+                Text = "Cancel",
+                Width = 80,
+                Location = new Point(310, 200),
+                Parent = _editDialogWindow
+            };
+            cancelButton.Click += (s, e) => _editDialogWindow.Hide();
+        }
+
+        private void SaveEditedMessage()
+        {
+            string title = _editTitleTextBox.Text.Trim();
+            string messageText = _editMessageTextBox.Text.Trim();
+
+            if (string.IsNullOrEmpty(title) || string.IsNullOrEmpty(messageText))
+            {
+                ScreenNotification.ShowNotification(
+                    "LT Messages: Title and message cannot be empty",
+                    ScreenNotification.NotificationType.Error);
+                return;
+            }
+
+            var newEntry = new MessageEntry(title, messageText);
+
+            if (_editingMessageIndex >= 0)
+            {
+                // Update existing message
+                _messages[_editingMessageIndex] = newEntry;
+            }
+            else
+            {
+                // Add new message
+                _messages.Add(newEntry);
+            }
+
+            _editDialogWindow.Hide();
+            RefreshEditorUI();
+            RefreshMessageUI();
+        }
+
+        private void DeleteMessage(int index)
+        {
+            if (index >= 0 && index < _messages.Count)
+            {
+                _messages.RemoveAt(index);
+                RefreshEditorUI();
+                RefreshMessageUI();
+            }
+        }
+
+        private void SaveMessagesToFile()
+        {
+            try
+            {
+                string filePath = _messageFilePath.Value;
+
+                // Create directory if it doesn't exist
+                string directory = Path.GetDirectoryName(filePath);
+                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                var lines = new List<string>
+                {
+                    "# ========================================",
+                    "# LT Messages Configuration File",
+                    "# ========================================",
+                    "# ",
+                    "# Format: Title,Message",
+                    "# Title: max 16 characters (shown in popup menu)",
+                    "# Message: max 200 characters (default GW2 chat limit)",
+                    "# ",
+                    "# Lines starting with # are comments",
+                    "# ========================================",
+                    ""
+                };
+
+                foreach (var message in _messages)
+                {
+                    lines.Add($"{message.Title},{message.Message}");
+                }
+
+                File.WriteAllLines(filePath, lines);
+
+                Logger.Info($"Saved {_messages.Count} messages to {filePath}");
+
+                ScreenNotification.ShowNotification(
+                    $"LT Messages: Saved {_messages.Count} messages",
+                    ScreenNotification.NotificationType.Info);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to save messages to file");
+                ScreenNotification.ShowNotification(
+                    "LT Messages: Failed to save messages to file",
+                    ScreenNotification.NotificationType.Error);
+            }
+        }
+
+        #endregion
+
+        #region Message Sending
+
+        private void OnMessageSelected(MessageEntry message)
+        {
+            Logger.Info($"Message selected: {message.Title}");
+
+            // Check if LT mode is enabled
+            if (!_ltModeEnabled.Value)
+            {
+                ScreenNotification.ShowNotification(
+                    "LT Messages: LT Mode is disabled. Enable it in settings to send messages.",
+                    ScreenNotification.NotificationType.Warning);
+                Logger.Warn("Message send blocked - LT Mode is disabled");
+                HidePopup();
+                return;
+            }
+
+            if (_autoSendEnabled.Value)
+            {
+                SendMessageAutomatic(message);
+            }
+            else
+            {
+                SendMessageClipboard(message);
+            }
+        }
+
+        private void SendMessageClipboard(MessageEntry message)
+        {
+            try
+            {
+                string originalClipboard = null;
+                string clipboardText;
+
+                // Determine what to copy based on chat method
+                if (_chatMethod.Value == ChatMethod.SlashCommand)
+                {
+                    string command = _chatCommand.Value == ChatCommand.Squad ? "squad" : "subgroup";
+                    clipboardText = $"/{command} {message.Message}";
+                }
+                else
+                {
+                    clipboardText = message.Message;
+                }
+
+                // Clipboard operations need to run on STA thread
+                var clipboardThread = new Thread(() =>
+                {
+                    try
+                    {
+                        // Save original clipboard
+                        originalClipboard = System.Windows.Forms.Clipboard.GetText();
+
+                        // Copy message
+                        System.Windows.Forms.Clipboard.SetText(clipboardText);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error(ex, "Clipboard operation failed");
+                        throw;
+                    }
+                });
+                clipboardThread.SetApartmentState(ApartmentState.STA);
+                clipboardThread.Start();
+                clipboardThread.Join();
+
+                Logger.Info($"Message copied to clipboard: {clipboardText}");
+
+                // Restore clipboard after a delay
+                Task.Run(async () =>
+                {
+                    await Task.Delay(10000); // 10 seconds
+
+                    if (!string.IsNullOrEmpty(originalClipboard))
+                    {
+                        var restoreThread = new Thread(() =>
+                        {
+                            try
+                            {
+                                System.Windows.Forms.Clipboard.SetText(originalClipboard);
+                            }
+                            catch (Exception ex)
+                            {
+                                Logger.Warn(ex, "Failed to restore clipboard");
+                            }
+                        });
+                        restoreThread.SetApartmentState(ApartmentState.STA);
+                        restoreThread.Start();
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to copy message to clipboard");
+                ScreenNotification.ShowNotification(
+                    $"LT Messages: Failed to copy - {ex.Message}",
+                    ScreenNotification.NotificationType.Error);
+            }
+        }
+
+        private void SendMessageAutomatic(MessageEntry message)
+        {
+            Task.Run(async () =>
+            {
+                try
+                {
+                    // Focus the game window
+                    FocusGameWindow();
+
+                    // Wait for focus to settle
+                    await Task.Delay(100);
+
+                    if (_chatMethod.Value == ChatMethod.SlashCommand)
+                    {
+                        // Use Shift+/ command method
+                        string command = _chatCommand.Value == ChatCommand.Squad ? "squad" : "subgroup";
+                        Logger.Info($"Sending message: /{command} {message.Message}");
+
+                        // Open chat with "/" (Shift+/)
+                        Logger.Debug("Sending Shift+/ to open chat with /");
+                        SendKeyPress(VK_SLASH, shift: true);
+
+                        // Wait for chat box to fully open and be ready
+                        await Task.Delay(150);
+
+                        // Type "squad [message]" or "subgroup [message]" character by character
+                        Logger.Debug($"Typing: {command} {message.Message}");
+                        await TypeString($"{command} {message.Message}");
+                    }
+                    else
+                    {
+                        // Use Shift+Enter direct squad chat method
+                        Logger.Info($"Sending message to squad chat: {message.Message}");
+
+                        // Open squad chat (Shift+Enter)
+                        Logger.Debug("Sending Shift+Enter to open squad chat");
+                        SendKeyPress(VK_RETURN, shift: true);
+
+                        // Wait for chat box to fully open and be ready
+                        await Task.Delay(150);
+
+                        // Type message character by character
+                        Logger.Debug($"Typing: {message.Message}");
+                        await TypeString(message.Message);
+                    }
+
+                    // Brief wait before sending
+                    await Task.Delay(50);
+
+                    // Send (Enter)
+                    Logger.Debug("Sending Enter to send message");
+                    SendKeyPress(VK_RETURN);
+
+                    // Hide popup AFTER key sequence completes
+                    HidePopup();
+
+                    Logger.Info($"Message auto-sent: {message.Message}");
+
+                    // No success notification - it interferes with the key sequence
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "Failed to auto-send message");
+                    ScreenNotification.ShowNotification(
+                        $"LT Messages: Failed to send - {ex.Message}",
+                        ScreenNotification.NotificationType.Error);
+                }
+            });
+        }
+
+        #endregion
+    }
+}
