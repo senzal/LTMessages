@@ -12,13 +12,9 @@
   "url": "https://github.com/senzal/LTMessages",
   "contributors": [
     {
-      "name": "Senzall",
-      "username": "YourGw2AccountName.1234"
+      "name": "Senzall"
     }
   ],
 
-  "directories": [],
-  "enabled_without_gw2": false,
-
-  "api_permissions": {}
+  "enabled_without_gw2": false
 }
