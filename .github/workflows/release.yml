@@ -1,0 +1,65 @@
+name: Build Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release type'
+        required: true
+        type: choice
+        options:
+          - test-build
+          - prerelease
+          - release
+        default: 'test-build'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Get version from manifest
+        id: version
+        shell: pwsh
+        run: |
+          $manifest = Get-Content manifest.json | ConvertFrom-Json
+          $version = $manifest.version
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          echo "Module version: $version"
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build Release
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Upload artifact (always available for download)
+        uses: actions/upload-artifact@v4
+        with:
+          name: LTMessages-v${{ steps.version.outputs.VERSION }}
+          path: bin/Release/net48/LTMessages.bhm
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: inputs.release_type != 'test-build'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: LT Messages v${{ steps.version.outputs.VERSION }}
+          files: bin/Release/net48/LTMessages.bhm
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ inputs.release_type == 'prerelease' }}
+          body: |
+            ## Installation
+            1. Download `LTMessages.bhm` below
+            2. Place it in `Documents\Guild Wars 2\addons\blishhud\modules\`
+            3. Restart Blish HUD or enable the module in settings
