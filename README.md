@@ -4,7 +4,7 @@
 
 Allows LTs and Commanders to send preset squad broadcast messages. Helping squads and LTs literally get the message out!
 
-[![Version](https://img.shields.io/badge/version-0.8.5-blue.svg)](https://github.com/senzal/LTMessages/releases)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/senzal/LTMessages/releases)
 [![Blish HUD](https://img.shields.io/badge/Blish%20HUD-1.2.0%2B-orange.svg)](https://blishhud.com/)
 
 ---
@@ -24,7 +24,7 @@ This module lets you send these messages with a single click, either automatical
 ## Quick Start
 
 ### Installation
-1. Download `bh.lt.messages_0.8.5.bhm` from [Releases](https://github.com/senzal/LTMessages/releases)
+1. Download `bh.lt.messages_1.0.0.bhm` from [Releases](https://github.com/senzal/LTMessages/releases)
 2. Place it in: `Documents\Guild Wars 2\addons\blishhud\modules\`
 3. Restart Blish HUD
 4. Enable the module
@@ -76,12 +76,22 @@ That's it!
 4. Click **Save to File** when done
 
 ### Default Messages Included
-The module comes with 17 helpful messages:
-- Tag movement (Moving, Stack on Tag)
-- Hero Points (combat and commune instructions)
-- Navigation (Waypoint, Vista, POI)
-- Combat tips (Red circles, mechanics, CC)
-- Squad management (Guard, Help, Special Squad)
+The module comes with 30 comprehensive messages organized in logical commander flow:
+
+**Pre-Movement & Positioning** (5 messages)
+- Stack, Wait, Buffs, Stealth, Blast
+
+**Movement Commands** (7 messages)
+- Moving, Stop, Port, Portal, Unlock-WP, Take-WP, Link-WP
+
+**Combat - Priority Actions** (8 messages)
+- Focus, Kill-Adds, Spread, Dodge, Rez, Mount-CC, Need-CC, Safe
+
+**Objectives** (5 messages)
+- HP-Combat, HP-Commune, F-Vista, POI-Tag, POI-Marker
+
+**Squad Management** (5 messages)
+- Guard, Loot, Help, No-Drop, Break
 
 ---
 

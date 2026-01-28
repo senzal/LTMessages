@@ -1,6 +1,6 @@
 {
   "name": "LT Messages",
-  "version": "0.8.5",
+  "version": "0.8.6",
   "namespace": "bh.lt.messages",
   "package": "LTMessages.dll",
   "manifest_version": 1,

@@ -471,23 +471,45 @@ namespace LTMessages
             // Embedded default messages - always available even if file doesn't exist
             return new List<MessageEntry>
             {
-                new MessageEntry("Moving", "Tag is moving"),
+                // Pre-Movement & Positioning
                 new MessageEntry("Stack", "Stack on Tag"),
-                new MessageEntry("HP-Combat", "Please let Tag start the combat hp!"),
-                new MessageEntry("HP-Commune", "Commune with HP and then stack on tag!"),
+                new MessageEntry("Wait", "Wait for the squad!"),
+                new MessageEntry("Buffs", "Buffs dropped near tag"),
+                new MessageEntry("Stealth", "Stack for stealth share"),
+                new MessageEntry("Blast", "Blast the field for might/stealth"),
+
+                // Movement Commands
+                new MessageEntry("Moving", "Tag is moving"),
+                new MessageEntry("Stop", "Stop! Hold position"),
                 new MessageEntry("Port", "Port is on the marker"),
-                new MessageEntry("F-Vist", "F the Vista and then Stack on Tag"),
-                new MessageEntry("POI", "Point of Interest on Tag!"),
-                new MessageEntry("Bunny", "Bunny up for CC"),
-                new MessageEntry("Take-WP", "Take the Waypoint."),
-                new MessageEntry("Woosh-WP", "Woosh the Waypoint"),
-                new MessageEntry("Red", "If it is red make it dead!"),
-                new MessageEntry("Red-Circles", "Don't stand in the red circles"),
-                new MessageEntry("Mech", "Watch for the bounty mechanics"),
-                new MessageEntry("Help", "If you get lost ask for help!"),
+                new MessageEntry("Portal", "Portal is up at marker"),
+                new MessageEntry("Unlock-WP", "Unlock the Waypoint!"),
+                new MessageEntry("Take-WP", "Take the Waypoint in chat"),
+                new MessageEntry("Link-WP", "Link the Waypoint in chat"),
+
+                // Combat - Priority Actions
+                new MessageEntry("Focus", "Focus the target"),
+                new MessageEntry("Kill-Adds", "Kill the adds"),
+                new MessageEntry("Spread", "Spread out!"),
+                new MessageEntry("Dodge", "Dodge the AoE attacks!"),
+                new MessageEntry("Rez", "Rez downed players!"),
+                new MessageEntry("Mount-CC", "Springer or Warclaw up for CC"),
+                new MessageEntry("Need-CC", "We need CC!"),
+                new MessageEntry("Safe", "Area is clear - all safe"),
+
+                // Objectives
+                new MessageEntry("HP-Combat", "Please let Tag start the combat HP!"),
+                new MessageEntry("HP-Commune", "Commune with HP and then stack on tag!"),
+                new MessageEntry("F-Vista", "F the Vista and then stack on tag!"),
+                new MessageEntry("POI-Tag", "Point of Interest on Tag!"),
+                new MessageEntry("POI-Marker", "Point of Interest on Marker"),
+
+                // Squad Management
                 new MessageEntry("Guard", "We need 1-2 people to guard this spot"),
-                new MessageEntry("Specials", "Special Squad can come get their loot"),
-                new MessageEntry("No-Drop", "Please don't drop EMPs or other items. Let Commander setup stations.")
+                new MessageEntry("Loot", "F for loot! Some chests need manual looting"),
+                new MessageEntry("Help", "If you get lost ask for help!"),
+                new MessageEntry("No-Drop", "Please don't drop items. Let Commander set up stations."),
+                new MessageEntry("Break", "We are taking a short break. BRB")
             };
         }
 
@@ -602,23 +624,45 @@ namespace LTMessages
                     "# Lines starting with # are comments and ignored",
                     "# ========================================",
                     "",
-                    "Moving,Tag is moving",
+                    "# Pre-Movement & Positioning",
                     "Stack,Stack on Tag",
-                    "HP-Combat,Please let Tag start the combat hp!",
-                    "HP-Commune,Commune with HP and then stack on tag!",
+                    "Wait,Wait for the squad!",
+                    "Buffs,Buffs dropped near tag",
+                    "Stealth,Stack for stealth share",
+                    "Blast,Blast the field for might/stealth",
+                    "",
+                    "# Movement Commands",
+                    "Moving,Tag is moving",
+                    "Stop,Stop! Hold position",
                     "Port,Port is on the marker",
-                    "F-Vist, F the Vista and then Stack on Tag",
-                    "POI,Point of Interest on Tag!",
-                    "Bunny,Bunny up for CC",
-                    "Take-WP,Take the Waypoint.",
-                    "Woosh-WP,Woosh the Waypoint",
-                    "Red,If it is red make it dead!",
-                    "Red-Circles,Don't stand in the red circles",
-                    "Mech,Watch for the bounty mechanics",
-                    "Help,If you get lost ask for help!",
+                    "Portal,Portal is up at marker",
+                    "Unlock-WP,Unlock the Waypoint!",
+                    "Take-WP,Take the Waypoint in chat",
+                    "Link-WP,Link the Waypoint in chat",
+                    "",
+                    "# Combat - Priority Actions",
+                    "Focus,Focus the target",
+                    "Kill-Adds,Kill the adds",
+                    "Spread,Spread out!",
+                    "Dodge,Dodge the AoE attacks!",
+                    "Rez,Rez downed players!",
+                    "Mount-CC,Springer or Warclaw up for CC",
+                    "Need-CC,We need CC!",
+                    "Safe,Area is clear - all safe",
+                    "",
+                    "# Objectives",
+                    "HP-Combat,Please let Tag start the combat HP!",
+                    "HP-Commune,Commune with HP and then stack on tag!",
+                    "F-Vista,F the Vista and then stack on tag!",
+                    "POI-Tag,Point of Interest on Tag!",
+                    "POI-Marker,Point of Interest on Marker",
+                    "",
+                    "# Squad Management",
                     "Guard,We need 1-2 people to guard this spot",
-                    "Specials,Special Squad can come get their loot",
-                    "No-Drop,Please don't drop EMPs or other items. Let Commander setup stations."
+                    "Loot,F for loot! Some chests need manual looting",
+                    "Help,If you get lost ask for help!",
+                    "No-Drop,Please don't drop items. Let Commander set up stations.",
+                    "Break,We are taking a short break. BRB"
                 };
 
                 File.WriteAllLines(filePath, defaultMessages);
@@ -1002,12 +1046,42 @@ namespace LTMessages
                 Parent = _editorWindow
             };
 
-            // Close button
+            // Add button (top right)
+            var addButton = new StandardButton
+            {
+                Text = "Add",
+                Width = 60,
+                Location = new Point(210, 8),
+                Parent = _editorWindow
+            };
+            addButton.Click += (s, e) => ShowEditDialog(-1, null);
+
+            // Save button (top right)
+            var saveButton = new StandardButton
+            {
+                Text = "Save",
+                Width = 60,
+                Location = new Point(280, 8),
+                Parent = _editorWindow
+            };
+            saveButton.Click += (s, e) => SaveMessagesToFile();
+
+            // Restore button (top right)
+            var restoreButton = new StandardButton
+            {
+                Text = "Restore",
+                Width = 70,
+                Location = new Point(350, 8),
+                Parent = _editorWindow
+            };
+            restoreButton.Click += (s, e) => RestoreDefaultMessages();
+
+            // Close button (top right)
             var closeButton = new StandardButton
             {
                 Text = "Close",
-                Width = 80,
-                Location = new Point(410, 8),
+                Width = 60,
+                Location = new Point(420, 8),
                 Parent = _editorWindow
             };
             closeButton.Click += (s, e) => _editorWindow.Hide();
@@ -1020,31 +1094,11 @@ namespace LTMessages
                 HeightSizingMode = SizingMode.Fill,
                 CanScroll = true,
                 Location = new Point(10, 40),
-                Size = new Point(480, 310),
+                Size = new Point(480, 345),
                 Parent = _editorWindow,
                 OuterControlPadding = new Vector2(5, 5),
                 ControlPadding = new Vector2(0, 3)
             };
-
-            // Add New Message button
-            var addButton = new StandardButton
-            {
-                Text = "Add New Message",
-                Width = 150,
-                Location = new Point(10, 360),
-                Parent = _editorWindow
-            };
-            addButton.Click += (s, e) => ShowEditDialog(-1, null);
-
-            // Save button
-            var saveButton = new StandardButton
-            {
-                Text = "Save to File",
-                Width = 120,
-                Location = new Point(170, 360),
-                Parent = _editorWindow
-            };
-            saveButton.Click += (s, e) => SaveMessagesToFile();
         }
 
         private void RefreshEditorUI()
@@ -1327,6 +1381,88 @@ namespace LTMessages
                 Logger.Error(ex, "Failed to save messages to file");
                 ScreenNotification.ShowNotification(
                     "LT Messages: Failed to save messages to file",
+                    ScreenNotification.NotificationType.Error);
+            }
+        }
+
+        private void RestoreDefaultMessages()
+        {
+            try
+            {
+                // Confirm with user first
+                var confirmDialog = new Panel
+                {
+                    Size = new Point(400, 200),
+                    Location = new Point((GameService.Graphics.SpriteScreen.Width - 400) / 2, (GameService.Graphics.SpriteScreen.Height - 200) / 2),
+                    ZIndex = 15000,
+                    Parent = GameService.Graphics.SpriteScreen,
+                    BackgroundColor = new Color(25, 20, 15, 250),
+                    ShowBorder = true
+                };
+
+                new Label
+                {
+                    Text = "Restore Default Messages?",
+                    Font = GameService.Content.DefaultFont18,
+                    AutoSizeHeight = true,
+                    AutoSizeWidth = true,
+                    Location = new Point(20, 20),
+                    TextColor = new Color(220, 200, 150, 255),
+                    ShowShadow = true,
+                    Parent = confirmDialog
+                };
+
+                new Label
+                {
+                    Text = "This will replace all your current messages\nwith the 30 default messages.\n\nThis action cannot be undone.",
+                    Width = 360,
+                    Height = 80,
+                    Location = new Point(20, 60),
+                    TextColor = Color.White,
+                    Font = GameService.Content.DefaultFont14,
+                    Parent = confirmDialog
+                };
+
+                var yesButton = new StandardButton
+                {
+                    Text = "Yes, Restore Defaults",
+                    Width = 160,
+                    Location = new Point(20, 150),
+                    Parent = confirmDialog
+                };
+
+                var noButton = new StandardButton
+                {
+                    Text = "Cancel",
+                    Width = 100,
+                    Location = new Point(190, 150),
+                    Parent = confirmDialog
+                };
+
+                yesButton.Click += (s, e) =>
+                {
+                    // Restore defaults
+                    _messages = GetDefaultMessages();
+                    RefreshEditorUI();
+                    RefreshMessageUI();
+                    SaveMessagesToFile();
+
+                    confirmDialog.Dispose();
+
+                    ScreenNotification.ShowNotification(
+                        "LT Messages: Restored 30 default messages",
+                        ScreenNotification.NotificationType.Info);
+
+                    Logger.Info("Restored default messages");
+                };
+
+                noButton.Click += (s, e) => confirmDialog.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to restore default messages");
+                ScreenNotification.ShowNotification(
+                    "LT Messages: Failed to restore defaults",
                     ScreenNotification.NotificationType.Error);
             }
         }

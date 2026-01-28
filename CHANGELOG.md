@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.8.6] - 2026-01-28 (Complete Commander Toolkit)
+
+### Added
+- "Restore Defaults" button in message editor
+  - Shows confirmation dialog before restoring
+  - Automatically saves to file after restoring
+- 13 new critical commander messages for comprehensive coverage:
+  - **Movement**: Wait, Stop, Portal, Unlock-WP
+  - **Combat**: Focus, Spread, Rez, Stealth, Blast, Safe
+  - **Objectives**: POI-Marker
+  - **Squad Management**: Buffs, Loot
+- Now includes 30 total default messages covering all essential commander needs
+
+### Changed
+- Updated default messages to use authentic GW2 commander language
+- Reorganized messages in logical commanding flow order:
+  - Pre-Movement & Positioning: 5 messages (Stack, Wait, Buffs, Stealth, Blast)
+  - Movement Commands: 7 messages (Moving, Stop, Port, Portal, Unlock-WP, Take-WP, Link-WP)
+  - Combat - Priority Actions: 8 messages (Focus, Kill-Adds, Spread, Dodge, Rez, Mount-CC, Need-CC, Safe)
+  - Objectives: 5 messages (HP-Combat, HP-Commune, F-Vista, POI-Tag, POI-Marker)
+  - Squad Management: 5 messages (Guard, Loot, Help, No-Drop, Break)
+- Improved waypoint messages for map completion trains:
+  - Added "Unlock-WP" for activating waypoints
+  - Separated "Take-WP" (teleport) from "Link-WP" (ping in chat)
+  - All three cover different waypoint scenarios
+- Changed "Ping-WP" to "Link-WP" (more common GW2 terminology)
+- Improved message phrasing for authenticity and clarity
+- Fixed spelling: "Springer" (was "Spriger"), "dropped" (was "droped")
+
+### Milestone
+- v1.0.0 represents a complete, production-ready commander toolkit with all essential messages
+
 ## [0.8.5] - 2026-01-27 (First Public Release)
 
 ### Changed
