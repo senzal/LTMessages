@@ -32,6 +32,8 @@ namespace LTMessages
         private SettingEntry<int> _sendDelayMs;
         private SettingEntry<bool> _showCornerIcon;
         private SettingEntry<KeyBinding> _popupKeybind;
+        private SettingEntry<KeyBinding> _toggleLTModeKeybind;
+        private SettingEntry<KeyBinding> _openEditorKeybind;
         private SettingEntry<ChatMethod> _chatMethod;
         private SettingEntry<ChatCommand> _chatCommand;
         private SettingEntry<int> _maxMessageLength;
@@ -52,8 +54,8 @@ namespace LTMessages
 
         // UI Components
         private CornerIcon _cornerIcon;
-        private ContextMenuStrip _messageContextMenu;
         private Panel _popupWindow;
+        private StandardButton _popupCloseButton;
         private FlowPanel _messageFlowPanel;
         private Panel _editorWindow;
         private FlowPanel _editorFlowPanel;
@@ -276,9 +278,21 @@ namespace LTMessages
 
             _popupKeybind = settings.DefineSetting(
                 "PopupKeybind",
-                new KeyBinding(Keys.Home),
+                new KeyBinding(),
                 () => "Popup Keybind",
-                () => "Press this key to show the message popup at your cursor");
+                () => "Press this key to show the message popup at your cursor (optional - no default binding)");
+
+            _toggleLTModeKeybind = settings.DefineSetting(
+                "ToggleLTModeKeybind",
+                new KeyBinding(),
+                () => "Toggle LT Mode Keybind",
+                () => "Press this key to toggle LT Mode on/off (optional - no default binding)");
+
+            _openEditorKeybind = settings.DefineSetting(
+                "OpenEditorKeybind",
+                new KeyBinding(),
+                () => "Open Editor Keybind",
+                () => "Press this key to open the message editor window (optional - no default binding)");
 
             _showCornerIcon = settings.DefineSetting(
                 "ShowCornerIcon",
@@ -376,9 +390,15 @@ namespace LTMessages
             // Create the popup window (hidden initially)
             CreatePopupWindow();
 
-            // Register keybind
+            // Register keybinds
             _popupKeybind.Value.Enabled = true;
             _popupKeybind.Value.Activated += OnPopupKeybindActivated;
+
+            _toggleLTModeKeybind.Value.Enabled = true;
+            _toggleLTModeKeybind.Value.Activated += OnToggleLTModeKeybindActivated;
+
+            _openEditorKeybind.Value.Enabled = true;
+            _openEditorKeybind.Value.Activated += OnOpenEditorKeybindActivated;
 
             Logger.Info("LT Messages module loaded successfully.");
 
@@ -411,6 +431,18 @@ namespace LTMessages
                 _popupKeybind.Value.Enabled = false;
             }
 
+            if (_toggleLTModeKeybind?.Value != null)
+            {
+                _toggleLTModeKeybind.Value.Activated -= OnToggleLTModeKeybindActivated;
+                _toggleLTModeKeybind.Value.Enabled = false;
+            }
+
+            if (_openEditorKeybind?.Value != null)
+            {
+                _openEditorKeybind.Value.Activated -= OnOpenEditorKeybindActivated;
+                _openEditorKeybind.Value.Enabled = false;
+            }
+
             // Dispose file watcher
             _fileWatcher?.Dispose();
 
@@ -422,7 +454,6 @@ namespace LTMessages
 
             // Dispose UI
             _cornerIcon?.Dispose();
-            _messageContextMenu?.Dispose();
             _popupWindow?.Dispose();
             _editorWindow?.Dispose();
             _editDialogWindow?.Dispose();
@@ -665,6 +696,7 @@ namespace LTMessages
                 };
 
                 _cornerIcon.Click += OnCornerIconClicked;
+                _cornerIcon.RightMouseButtonPressed += OnCornerIconRightClicked;
 
                 // Update tooltip based on LT mode
                 UpdateCornerIconTooltip();
@@ -683,7 +715,7 @@ namespace LTMessages
             if (_cornerIcon != null)
             {
                 string status = _ltModeEnabled.Value ? "ENABLED" : "DISABLED";
-                _cornerIcon.BasicTooltipText = $"LT Messages - Click to show messages\nLT Mode: {status}";
+                _cornerIcon.BasicTooltipText = $"LT Messages\nLeft-click: Show messages\nRight-click: Open editor\nLT Mode: {status}";
             }
         }
 
@@ -700,14 +732,39 @@ namespace LTMessages
                 ShowBorder = true
             };
 
+            // Add header label
+            new Label
+            {
+                Text = "Messages",
+                Font = GameService.Content.DefaultFont16,
+                AutoSizeHeight = true,
+                AutoSizeWidth = true,
+                Location = new Point(10, 8),
+                TextColor = new Color(220, 200, 150, 255),  // GW2 gold color
+                ShowShadow = true,
+                Parent = _popupWindow
+            };
+
+            // Add close button in top-right corner
+            _popupCloseButton = new StandardButton
+            {
+                Text = "X",
+                Width = 25,
+                Height = 25,
+                Location = new Point(_popupWindow.Width - 30, 5),
+                Parent = _popupWindow,
+                ZIndex = 10
+            };
+            _popupCloseButton.Click += (s, e) => HidePopup();
+
             _messageFlowPanel = new FlowPanel
             {
                 FlowDirection = ControlFlowDirection.SingleTopToBottom,
                 WidthSizingMode = SizingMode.Fill,
                 HeightSizingMode = SizingMode.Fill,
                 CanScroll = true,
-                Location = new Point(5, 5),
-                Size = new Point(210, 290),
+                Location = new Point(5, 35),
+                Size = new Point(210, 260),
                 Parent = _popupWindow,
                 OuterControlPadding = new Vector2(8, 8),
                 ControlPadding = new Vector2(0, 2)
@@ -771,22 +828,6 @@ namespace LTMessages
                     };
                 }
             }
-
-            // Update context menu
-            if (_cornerIcon != null)
-            {
-                _messageContextMenu?.Dispose();
-                _messageContextMenu = new ContextMenuStrip();
-
-                foreach (var message in _messages)
-                {
-                    var capturedMessage = message;
-                    var menuItem = _messageContextMenu.AddMenuItem(message.Title);
-                    menuItem.Click += (s, e) => OnMessageSelected(capturedMessage);
-                }
-
-                _cornerIcon.Menu = _messageContextMenu;
-            }
         }
 
         #endregion
@@ -815,6 +856,32 @@ namespace LTMessages
         {
             // Show popup at a fixed position near the corner icon
             ShowPopupAtCursor();
+        }
+
+        private void OnCornerIconRightClicked(object sender, MouseEventArgs e)
+        {
+            // Open message editor
+            ShowEditorWindow();
+            Logger.Info("Editor window opened via corner icon right-click");
+        }
+
+        private void OnToggleLTModeKeybindActivated(object sender, EventArgs e)
+        {
+            // Toggle LT Mode
+            _ltModeEnabled.Value = !_ltModeEnabled.Value;
+
+            string status = _ltModeEnabled.Value ? "ENABLED" : "DISABLED";
+            ScreenNotification.ShowNotification(
+                $"LT Messages: LT Mode {status}",
+                ScreenNotification.NotificationType.Info);
+
+            Logger.Info($"LT Mode toggled via keybind: {status}");
+        }
+
+        private void OnOpenEditorKeybindActivated(object sender, EventArgs e)
+        {
+            ShowEditorWindow();
+            Logger.Info("Editor window opened via keybind");
         }
 
         private void OnScreenClicked(object sender, MouseEventArgs e)
@@ -847,10 +914,16 @@ namespace LTMessages
                 // Get mouse position
                 var mousePos = GameService.Input.Mouse.Position;
 
-                // Adjust window size based on content
+                // Adjust window size based on content (add 40 for close button area at top)
                 int itemHeight = 25;
-                int windowHeight = Math.Min(_messages.Count * itemHeight + 20, 400);
+                int windowHeight = Math.Min(_messages.Count * itemHeight + 60, 440);
                 _popupWindow.Size = new Point(200, windowHeight);
+
+                // Update close button position to match new window width
+                if (_popupCloseButton != null)
+                {
+                    _popupCloseButton.Location = new Point(_popupWindow.Width - 30, 5);
+                }
 
                 // Position at cursor, but keep on screen
                 int x = mousePos.X;

@@ -1,11 +1,11 @@
 {
   "name": "LT Messages",
-  "version": "0.7.0",
+  "version": "0.8.5",
   "namespace": "bh.lt.messages",
   "package": "LTMessages.dll",
   "manifest_version": 1,
 
-  "description": "Quick message sender for Lieutenant Tags to send pre-configured messages to squad chat.",
+  "description": "Allows LTs and Commanders to send preset squad broadcast messages. Helping squads and LTs literally get the message out!",
   "dependencies": {
     "bh.blishhud": ">=1.2.0"
   },
