@@ -27,7 +27,7 @@ namespace LTMessages
         internal ContentsManager ContentsManager => this.ModuleParameters.ContentsManager;
 
         // Settings
-        private SettingEntry<int> _activeMessageList; // Which list (0-4) is active for sending messages
+        private SettingEntry<int> _activeMessageList; // Which list (1-5) is active for sending messages
         private SettingEntry<bool> _autoSendEnabled;
         private SettingEntry<int> _sendDelayMs;
         private SettingEntry<bool> _showCornerIcon;
@@ -66,13 +66,13 @@ namespace LTMessages
         private MessageEntry _editingMessage;
         private int _editingMessageIndex = -1;
 
-        // Data
-        private List<MessageEntry> _messages = new List<MessageEntry>();
+        // Data - Multiple message lists
+        private const int MessageListCount = 5;
+        private List<MessageEntry>[] _messageLists = new List<MessageEntry>[MessageListCount];
+        private int _editingListIndex = 0; // Which list is currently being edited (0-4)
         private FileSystemWatcher _fileWatcher;
-        private int _currentListIndex = 0; // Which list (0-5) is currently loaded (for editing)
 
         // Constants
-        private const int MessageListCount = 6; // Support 6 lists total (0-5)
         private static readonly string DefaultFilePathBase = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             @"Guild Wars 2\addons\blishhud\ltmessages\");
@@ -273,11 +273,11 @@ namespace LTMessages
 
         protected override void DefineSettings(SettingCollection settings)
         {
-            _activeMessageList = settings.DefineSetting(
-                "ActiveMessageList",
-                0, // Default to List 0 (messages.txt)
-                () => "Active Message List (0-5)",
-                () => "Which message list (0-5) to use when sending messages. Use different lists for different event types (WvW, Metas, HP Trains, etc.). 0=messages.txt, 1=messages_1.txt, etc.");
+            _messageFilePath = settings.DefineSetting(
+                "MessageFilePath",
+                DefaultFilePath,
+                () => "Message File Path",
+                () => "Path to messages.txt - Edit this file with any text editor to customize your messages. File auto-reloads when changed.");
 
             _popupKeybind = settings.DefineSetting(
                 "PopupKeybind",
@@ -363,18 +363,20 @@ namespace LTMessages
                 }
             };
 
-            // Update when active list changes
-            _activeMessageList.SettingChanged += OnActiveListChanged;
+            // Update file watcher when path changes
+            _messageFilePath.SettingChanged += OnFilePathChanged;
         }
 
         protected override async Task LoadAsync()
         {
             Logger.Info("Loading LT Messages module...");
 
-            // Load the active message list
-            _currentListIndex = _activeMessageList.Value;
+            // Initialize with embedded defaults first (module is immediately functional)
+            _messages = GetDefaultMessages();
+            Logger.Info($"Initialized with {_messages.Count} default messages");
+
+            // Load messages from file (will override defaults if file exists)
             LoadMessagesFromFile();
-            Logger.Info($"Loaded List {_currentListIndex + 1} with {_messages.Count} messages");
 
             // Setup file watcher for live reload
             SetupFileWatcher();
@@ -423,7 +425,7 @@ namespace LTMessages
             Logger.Info("Unloading LT Messages module...");
 
             // Unsubscribe from events
-            _activeMessageList.SettingChanged -= OnActiveListChanged;
+            _messageFilePath.SettingChanged -= OnFilePathChanged;
             _showCornerIcon.SettingChanged -= OnShowCornerIconChanged;
 
             if (_popupKeybind?.Value != null)
@@ -514,33 +516,9 @@ namespace LTMessages
             };
         }
 
-        // Get a single sample message for lists 2-5
-        private List<MessageEntry> GetSampleMessage()
-        {
-            return new List<MessageEntry>
-            {
-                new MessageEntry("Stack", "Stack on Tag")
-            };
-        }
-
-        // Get file path for a specific list index (0-5)
-        private string GetFilePathForList(int listIndex)
-        {
-            if (listIndex == 0)
-            {
-                // List 0 uses messages.txt for backwards compatibility
-                return Path.Combine(DefaultFilePathBase, "messages.txt");
-            }
-            else
-            {
-                // Lists 1-5 use messages_1.txt through messages_5.txt
-                return Path.Combine(DefaultFilePathBase, $"messages_{listIndex}.txt");
-            }
-        }
-
         private void LoadMessagesFromFile()
         {
-            string filePath = GetFilePathForList(_currentListIndex);
+            string filePath = _messageFilePath.Value;
 
             try
             {
@@ -555,9 +533,9 @@ namespace LTMessages
                 // Create default file if it doesn't exist
                 if (!File.Exists(filePath))
                 {
-                    CreateDefaultMessageFile(filePath, _currentListIndex);
-                    // Use appropriate defaults based on list index
-                    _messages = (_currentListIndex == 0) ? GetDefaultMessages() : GetSampleMessage();
+                    CreateDefaultMessageFile(filePath);
+                    // Use embedded defaults until file is created
+                    _messages = GetDefaultMessages();
                     RefreshMessageUI();
                     return;
                 }
@@ -627,20 +605,15 @@ namespace LTMessages
             }
         }
 
-        private void CreateDefaultMessageFile(string filePath, int listIndex)
+        private void CreateDefaultMessageFile(string filePath)
         {
             try
             {
-                List<string> defaultMessages;
-
-                if (listIndex == 0)
+                var defaultMessages = new[]
                 {
-                    // List 0 gets the full 30 default messages
-                    defaultMessages = new List<string>
-                    {
-                        "# ========================================",
-                        "# LT Messages Configuration File - List 0 (Default)",
-                        "# ========================================",
+                    "# ========================================",
+                    "# LT Messages Configuration File",
+                    "# ========================================",
                     "# ",
                     "# TO EDIT: Open this file in Notepad, VSCode, or any text editor",
                     "# FILE LOCATION: " + filePath,
@@ -691,38 +664,12 @@ namespace LTMessages
                     "Guard,We need 1-2 people to guard this spot",
                     "Loot,F for loot! Some chests need manual looting",
                     "Help,If you get lost ask for help!",
-                        "No-Drop,Please don't drop items. Let Commander set up stations.",
-                        "Break,We are taking a short break. BRB"
-                    };
-                }
-                else
-                {
-                    // Lists 1-5 get a single sample message
-                    defaultMessages = new List<string>
-                    {
-                        "# ========================================",
-                        $"# LT Messages Configuration File - List {listIndex}",
-                        "# ========================================",
-                        "# ",
-                        "# TO EDIT: Open this file in Notepad, VSCode, or any text editor",
-                        "# FILE LOCATION: " + filePath,
-                        "# ",
-                        "# Use this list for specific event types (WvW, Metas, HP Trains, etc.)",
-                        "# Add your custom messages below.",
-                        "# ",
-                        "# FORMAT: Title,Message",
-                        "#   Title: max 16 characters (shown in popup menu)",
-                        "#   Message: max 200 characters (default GW2 chat limit)",
-                        "# ",
-                        "# Lines starting with # are comments and ignored",
-                        "# ========================================",
-                        "",
-                        "Stack,Stack on Tag"
-                    };
-                }
+                    "No-Drop,Please don't drop items. Let Commander set up stations.",
+                    "Break,We are taking a short break. BRB"
+                };
 
                 File.WriteAllLines(filePath, defaultMessages);
-                Logger.Info($"Created default message file at {filePath} (List {listIndex})");
+                Logger.Info($"Created default message file at {filePath}");
             }
             catch (Exception ex)
             {
@@ -734,8 +681,7 @@ namespace LTMessages
         {
             try
             {
-                // Watch the currently active list file
-                string filePath = GetFilePathForList(_activeMessageList.Value);
+                string filePath = _messageFilePath.Value;
                 string directory = Path.GetDirectoryName(filePath);
                 string fileName = Path.GetFileName(filePath);
 
@@ -754,7 +700,7 @@ namespace LTMessages
                 _fileWatcher.Changed += OnFileChanged;
                 _fileWatcher.EnableRaisingEvents = true;
 
-                Logger.Info($"File watcher setup for {filePath} (List {_activeMessageList.Value})");
+                Logger.Info($"File watcher setup for {filePath}");
             }
             catch (Exception ex)
             {
@@ -766,25 +712,14 @@ namespace LTMessages
         {
             // Debounce file changes (file can trigger multiple events)
             Thread.Sleep(100);
-            Logger.Info($"Message file changed for List {_activeMessageList.Value}, reloading...");
-
-            // If the changed file is the active list, reload it
-            if (_activeMessageList.Value == _currentListIndex)
-            {
-                LoadMessagesFromFile();
-            }
+            Logger.Info("Message file changed, reloading...");
+            LoadMessagesFromFile();
         }
 
-        private void OnActiveListChanged(object sender, ValueChangedEventArgs<int> e)
+        private void OnFilePathChanged(object sender, ValueChangedEventArgs<string> e)
         {
-            // Active list changed - update file watcher and reload if needed
-            Logger.Info($"Active message list changed from {e.PreviousValue} to {e.NewValue}");
+            LoadMessagesFromFile();
             SetupFileWatcher();
-
-            // If we're viewing the active list in editor, no need to reload
-            // If we're viewing a different list in editor, keep showing that list
-            // Only reload popup UI
-            RefreshMessageUI();
         }
 
         #endregion
@@ -1114,38 +1049,6 @@ namespace LTMessages
                 Parent = _editorWindow
             };
 
-            // List selector dropdown
-            _listSelectorDropdown = new Dropdown
-            {
-                Location = new Point(10, 40),
-                Width = 150,
-                Parent = _editorWindow
-            };
-
-            // Populate dropdown with list options (0-5)
-            for (int i = 0; i < MessageListCount; i++)
-            {
-                _listSelectorDropdown.Items.Add($"List {i}");
-            }
-            _listSelectorDropdown.SelectedItem = $"List {_currentListIndex}";
-
-            // Handle dropdown selection change
-            _listSelectorDropdown.ValueChanged += (s, e) =>
-            {
-                // Parse selected list number
-                string selected = _listSelectorDropdown.SelectedItem;
-                if (selected.StartsWith("List ") && int.TryParse(selected.Substring(5), out int listNum))
-                {
-                    if (listNum >= 0 && listNum < MessageListCount)
-                    {
-                        _currentListIndex = listNum;
-                        Logger.Info($"Switched to editing List {listNum}");
-                        LoadMessagesFromFile();
-                        RefreshEditorUI();
-                    }
-                }
-            };
-
             // Add button (top right)
             var addButton = new StandardButton
             {
@@ -1186,15 +1089,15 @@ namespace LTMessages
             };
             closeButton.Click += (s, e) => _editorWindow.Hide();
 
-            // Message list panel (below dropdown)
+            // Message list panel
             _editorFlowPanel = new FlowPanel
             {
                 FlowDirection = ControlFlowDirection.SingleTopToBottom,
                 WidthSizingMode = SizingMode.Fill,
                 HeightSizingMode = SizingMode.Fill,
                 CanScroll = true,
-                Location = new Point(10, 70),
-                Size = new Point(480, 315),
+                Location = new Point(10, 40),
+                Size = new Point(480, 345),
                 Parent = _editorWindow,
                 OuterControlPadding = new Vector2(5, 5),
                 ControlPadding = new Vector2(0, 3)
@@ -1439,7 +1342,7 @@ namespace LTMessages
         {
             try
             {
-                string filePath = GetFilePathForList(_currentListIndex);
+                string filePath = _messageFilePath.Value;
 
                 // Create directory if it doesn't exist
                 string directory = Path.GetDirectoryName(filePath);
@@ -1451,7 +1354,7 @@ namespace LTMessages
                 var lines = new List<string>
                 {
                     "# ========================================",
-                    $"# LT Messages Configuration File - List {_currentListIndex}",
+                    "# LT Messages Configuration File",
                     "# ========================================",
                     "# ",
                     "# Format: Title,Message",
@@ -1470,10 +1373,10 @@ namespace LTMessages
 
                 File.WriteAllLines(filePath, lines);
 
-                Logger.Info($"Saved {_messages.Count} messages to {filePath} (List {_currentListIndex})");
+                Logger.Info($"Saved {_messages.Count} messages to {filePath}");
 
                 ScreenNotification.ShowNotification(
-                    $"LT Messages: Saved {_messages.Count} messages to List {_currentListIndex}",
+                    $"LT Messages: Saved {_messages.Count} messages",
                     ScreenNotification.NotificationType.Info);
             }
             catch (Exception ex)
@@ -1512,13 +1415,9 @@ namespace LTMessages
                     Parent = confirmDialog
                 };
 
-                string messageText = (_currentListIndex == 0)
-                    ? "This will replace all messages in List 0\nwith the 30 default messages.\n\nThis action cannot be undone."
-                    : "This will replace all messages in this list\nwith one sample message: Stack.\n\nThis action cannot be undone.";
-
                 new Label
                 {
-                    Text = messageText,
+                    Text = "This will replace all your current messages\nwith the 30 default messages.\n\nThis action cannot be undone.",
                     Width = 360,
                     Height = 80,
                     Location = new Point(20, 60),
@@ -1545,20 +1444,19 @@ namespace LTMessages
 
                 yesButton.Click += (s, e) =>
                 {
-                    // Restore defaults for current list
-                    _messages = (_currentListIndex == 0) ? GetDefaultMessages() : GetSampleMessage();
+                    // Restore defaults
+                    _messages = GetDefaultMessages();
                     RefreshEditorUI();
                     RefreshMessageUI();
                     SaveMessagesToFile();
 
                     confirmDialog.Dispose();
 
-                    int messageCount = _messages.Count;
                     ScreenNotification.ShowNotification(
-                        $"LT Messages: Restored {messageCount} default message(s) for List {_currentListIndex}",
+                        "LT Messages: Restored 30 default messages",
                         ScreenNotification.NotificationType.Info);
 
-                    Logger.Info($"Restored default messages for List {_currentListIndex}");
+                    Logger.Info("Restored default messages");
                 };
 
                 noButton.Click += (s, e) => confirmDialog.Dispose();
