@@ -5,7 +5,7 @@
   "package": "LTMessages.dll",
   "manifest_version": 1,
 
-  "description": "Allows LTs and Commanders to send preset squad broadcast messages. Helping squads and LTs literally get the message out!",
+  "description": "Send preset messages to any chat channel with one click! Perfect for LTs and Commanders managing squads. Features: 6 customizable message lists with custom names, flexible chat targeting (squad/map/party/guild/whispers), auto-send or clipboard mode, in-game message editor, and keybind support. For more advanced custom message features, we recommend also using the chat_shorts plugin.",
   "dependencies": {
     "bh.blishhud": ">=1.2.0"
   },
