@@ -1457,6 +1457,27 @@ namespace LTMessages
 
             _editorFlowPanel.ClearChildren();
 
+            // Calculate dynamic height based on message count (max 10 items visible)
+            int itemCount = _messages.Count;
+            int visibleItems = Math.Min(itemCount, 10);
+            int itemHeight = 60; // Height of each message panel
+            int itemPadding = 3; // Padding between items
+            int outerPadding = 10; // Top and bottom padding (5+5)
+
+            // Calculate flow panel height
+            int flowPanelHeight = (visibleItems * (itemHeight + itemPadding)) + outerPadding;
+
+            // Minimum height to show at least 3 items, even if list is shorter
+            int minFlowPanelHeight = (3 * (itemHeight + itemPadding)) + outerPadding;
+            flowPanelHeight = Math.Max(flowPanelHeight, minFlowPanelHeight);
+
+            // Update flow panel size
+            _editorFlowPanel.Size = new Point(480, flowPanelHeight);
+
+            // Update editor window height (top area 70px + flow panel + bottom padding 20px)
+            int editorHeight = 70 + flowPanelHeight + 20;
+            _editorWindow.Size = new Point(500, editorHeight);
+
             for (int i = 0; i < _messages.Count; i++)
             {
                 var message = _messages[i];
