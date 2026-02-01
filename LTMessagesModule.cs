@@ -1514,6 +1514,9 @@ namespace LTMessages
                 };
                 deleteButton.Click += (s, e) => DeleteMessage(index);
             }
+
+            // Force the flow panel to recalculate its content size and scrollbar
+            _editorFlowPanel.Invalidate();
         }
 
         private void ShowEditDialog(int messageIndex, MessageEntry message)
