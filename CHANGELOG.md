@@ -6,6 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.9.0] - 2026-01-31 (Major Feature Update)
+
+### Added
+- **Custom List Names**: Rename any of the 6 message lists with custom names (up to 30 characters)
+  - "Rename" button in message editor
+  - List 0 defaults to "Default", others are "List 1-5"
+  - Names persist across sessions
+- **Refactored Chat System** with three new settings:
+  - **Chat Focus**: Choose how to open chat (Shift+Enter for squad chat, or Enter for last used chat)
+  - **Chat Action**: Send (auto-type) or Paste Only (clipboard)
+  - **Chat Command**: 20 channel options including:
+    - Default (use current channel)
+    - /squad, /subgroup
+    - /1 through /5 (party member whispers)
+    - /guild, /g1 through /g6 (guild channels)
+    - /say, /map, /party, /team
+- **Typing Delay**: New dropdown with 16 optimized delay options (5-150ms, default 40ms)
+  - Finer control at lower delays where precision matters
+  - Migration support for old settings
+- **Help Dialog**: Comprehensive in-game help system
+  - "Help" button in message editor
+  - "Show Help" toggle in settings panel
+  - Covers quick start, settings explanations, common configurations, and troubleshooting
+  - Scrollable content with fixed title bar
+  - Thank you message to GW2 and Blish HUD communities
+
+### Changed
+- Maximum message length updated to 199 characters (GW2's actual limit, was 200)
+- Default typing delay reduced from 200ms to 40ms for faster message sending
+- Enhanced manifest description with chat_shorts plugin recommendation
+
+### Removed
+- "Max Message Length" setting (now hardcoded to 199 as it's a GW2 limitation)
+- "Active Message List" and "List Names Data" from settings UI (now stored internally)
+
+### Technical
+- Internal data (active list, custom names) now stored in `module_data.txt` instead of settings
+- Settings panel is cleaner with only user-relevant controls visible
+- Added automatic migration for invalid delay values from previous versions
+
+---
+
 ## [0.8.6] - 2026-01-28 (Complete Commander Toolkit)
 
 ### Added

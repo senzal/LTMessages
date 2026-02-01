@@ -399,6 +399,28 @@ namespace LTMessages
                     });
                 }
             };
+
+            // Add button to open help dialog
+            var openHelpButton = settings.DefineSetting(
+                "OpenHelpButton",
+                false,
+                () => "Show Help",
+                () => "Toggle this on to see help and configuration guide");
+
+            openHelpButton.SettingChanged += (s, e) =>
+            {
+                if (e.NewValue && !e.PreviousValue)
+                {
+                    ShowHelpDialog();
+
+                    // Reset button
+                    Task.Run(async () =>
+                    {
+                        await Task.Delay(100);
+                        openHelpButton.Value = false;
+                    });
+                }
+            };
         }
 
         protected override async Task LoadAsync()
@@ -498,6 +520,7 @@ namespace LTMessages
             _editorWindow?.Dispose();
             _editDialogWindow?.Dispose();
             _renameDialogWindow?.Dispose();
+            _helpDialogWindow?.Dispose();
 
             // Clear messages
             _messages.Clear();
@@ -1339,7 +1362,7 @@ namespace LTMessages
             };
             closeButton.Click += (s, e) => _editorWindow.Hide();
 
-            // Bottom row: [Dropdown] [Reset All] [Rename]
+            // Bottom row: [Dropdown] [Reset All] [Rename] [Help]
             // Reset All button (aligned below Defaults)
             var resetButton = new StandardButton
             {
@@ -1359,6 +1382,16 @@ namespace LTMessages
                 Parent = _editorWindow
             };
             renameButton.Click += (s, e) => ShowRenameListDialog();
+
+            // Help button
+            var helpButton = new StandardButton
+            {
+                Text = "Help",
+                Width = 70,
+                Location = new Point(330, 40),
+                Parent = _editorWindow
+            };
+            helpButton.Click += (s, e) => ShowHelpDialog();
 
             // Message list panel (below dropdown)
             _editorFlowPanel = new FlowPanel
@@ -1724,6 +1757,175 @@ namespace LTMessages
                 $"LT Messages: List renamed to '{newName}'",
                 ScreenNotification.NotificationType.Info);
             Logger.Info($"Renamed list {_currentListIndex} to '{newName}'");
+        }
+
+        private Panel _helpDialogWindow;
+
+        private void ShowHelpDialog()
+        {
+            if (_helpDialogWindow == null)
+            {
+                CreateHelpDialog();
+            }
+
+            // Center on screen
+            int x = (GameService.Graphics.SpriteScreen.Width - _helpDialogWindow.Width) / 2;
+            int y = (GameService.Graphics.SpriteScreen.Height - _helpDialogWindow.Height) / 2;
+            _helpDialogWindow.Location = new Point(x, y);
+
+            _helpDialogWindow.Show();
+        }
+
+        private void CreateHelpDialog()
+        {
+            _helpDialogWindow = new Panel
+            {
+                Size = new Point(600, 500),
+                ZIndex = 10003,
+                Parent = GameService.Graphics.SpriteScreen,
+                BackgroundColor = new Color(25, 20, 15, 250),
+                ShowBorder = true,
+                CanScroll = false
+            };
+
+            // Title
+            new Label
+            {
+                Text = "LT Messages - Help",
+                Font = GameService.Content.DefaultFont18,
+                AutoSizeHeight = true,
+                AutoSizeWidth = true,
+                Location = new Point(10, 10),
+                TextColor = new Color(220, 200, 150, 255),
+                Parent = _helpDialogWindow
+            };
+
+            // Close button (top right, next to title)
+            var closeButton = new StandardButton
+            {
+                Text = "Close",
+                Width = 80,
+                Location = new Point(510, 8),
+                Parent = _helpDialogWindow
+            };
+            closeButton.Click += (s, e) => _helpDialogWindow.Hide();
+
+            // Scrollable content panel
+            var contentPanel = new Panel
+            {
+                Location = new Point(10, 45),
+                Size = new Point(580, 445),
+                Parent = _helpDialogWindow,
+                CanScroll = true,
+                ShowBorder = false
+            };
+
+            // Help content
+            var helpText = @"QUICK START
+• Left-click [LT] icon to see your messages
+• Click a message to send it
+• Right-click [LT] icon to open this editor
+
+MODULE SETTINGS
+All operational settings are found in:
+Blish HUD → Manage Modules → LT Messages
+
+CHAT SETTINGS
+
+Chat Focus - How to open chat:
+• Shift+Enter: Opens squad chat directly
+• Enter: Opens last used chat (map, say, etc.)
+
+Chat Action - What to do with message:
+• Send: Automatically types and sends
+• Paste Only: Copies to clipboard (Ctrl+V to paste)
+
+Chat Command - Which channel to send to:
+• Default: Uses your current active channel
+• /squad: Squad broadcast
+• /map: Map chat
+• /party: Party chat
+• /guild: Guild chat
+• /say: Local say
+• /1 through /5: Whisper to party members
+• /g1 through /g6: Guild channels 1-6
+• And more!
+
+COMMON CONFIGURATIONS
+
+For Squad Broadcast:
+• Chat Focus: Shift+Enter
+• Chat Action: Send
+• Chat Command: Default (or /squad)
+
+For Map Chat:
+• Chat Focus: Enter
+• Chat Action: Send
+• Chat Command: /map
+
+For Manual Control (Clipboard):
+• Chat Action: Paste Only
+• (Chat Focus and Command don't matter)
+
+MESSAGE LISTS
+
+• Use 6 different lists for different events
+• Click dropdown to switch lists
+• Click ""Rename"" to give lists custom names
+  (e.g., ""WvW"", ""Metas"", ""HP Trains"")
+
+EDITING MESSAGES
+
+• Add: Create new message
+• Edit: Modify existing message (click in list)
+• Delete: Remove message (click Delete on message)
+• Save: Saves to file automatically
+• Defaults: Restore 30 default commander messages
+
+TYPING DELAY
+
+• Adjust if messages don't send reliably
+• Lower = faster typing (5-40ms recommended)
+• Higher = more reliable on slow systems
+• Default: 40ms works for most people
+
+TROUBLESHOOTING
+
+Messages not sending?
+• Check that LT Mode is enabled
+• Set Chat Action to ""Send""
+• Try higher Typing Delay
+• Verify Chat Command is correct
+
+Need more help?
+• GitHub: github.com/senzal/LTMessages
+• Blish Discord: discord.gg/FYKN3qh
+
+---
+
+THANK YOU!
+
+Thanks to the amazing Guild Wars 2 community
+and the Blish HUD community for using and
+creating incredible plugins that make our
+gaming experience even better!
+
+Your support, feedback, and contributions
+help make tools like this possible.
+
+Happy commanding! ♥";
+
+            var helpLabel = new Label
+            {
+                Text = helpText,
+                Location = new Point(5, 5),
+                Width = 555,
+                TextColor = Color.White,
+                Font = GameService.Content.DefaultFont14,
+                Parent = contentPanel,
+                WrapText = true,
+                AutoSizeHeight = true
+            };
         }
 
         private void SaveMessagesToFile()
