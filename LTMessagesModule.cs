@@ -1148,6 +1148,33 @@ namespace LTMessages
                         label.TextColor = new Color(220, 200, 150, 255);
                     };
                 }
+
+                // Calculate dynamic height based on message count (max 10 items visible)
+                int itemCount = _messages.Count;
+                int visibleItems = Math.Min(itemCount, 10);
+                int itemHeight = 26; // Height of each message label
+                int itemPadding = 2; // Padding between items
+                int outerPadding = 16; // Top and bottom padding (8+8)
+
+                // Calculate flow panel height
+                int flowPanelHeight = (visibleItems * (itemHeight + itemPadding)) + outerPadding;
+
+                // Minimum height to show at least 3 items for symmetry
+                int minFlowPanelHeight = (3 * (itemHeight + itemPadding)) + outerPadding;
+                flowPanelHeight = Math.Max(flowPanelHeight, minFlowPanelHeight);
+
+                // Update flow panel size
+                _messageFlowPanel.Size = new Point(210, flowPanelHeight);
+
+                // Update popup window height (header 35px + flow panel + bottom padding 5px)
+                int popupHeight = 35 + flowPanelHeight + 5;
+                _popupWindow.Size = new Point(220, popupHeight);
+
+                // Update close button position (top-right corner)
+                _popupCloseButton.Location = new Point(_popupWindow.Width - 30, 5);
+
+                // Force the flow panel to recalculate its content size and scrollbar
+                _messageFlowPanel.Invalidate();
             }
         }
 
@@ -1457,9 +1484,9 @@ namespace LTMessages
 
             _editorFlowPanel.ClearChildren();
 
-            // Calculate dynamic height based on message count (max 10 items visible)
+            // Calculate dynamic height based on message count (max 6 items visible for editor)
             int itemCount = _messages.Count;
-            int visibleItems = Math.Min(itemCount, 10);
+            int visibleItems = Math.Min(itemCount, 6);
             int itemHeight = 60; // Height of each message panel
             int itemPadding = 3; // Padding between items
             int outerPadding = 10; // Top and bottom padding (5+5)
