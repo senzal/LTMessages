@@ -1084,10 +1084,10 @@ namespace LTMessages
                 WidthSizingMode = SizingMode.Fill,
                 HeightSizingMode = SizingMode.Fill,
                 CanScroll = true,
-                Location = new Point(5, 40),
-                Size = new Point(210, 260),
+                Location = new Point(8, 40),
+                Size = new Point(204, 260),
                 Parent = _popupWindow,
-                OuterControlPadding = new Vector2(10, 10),
+                OuterControlPadding = new Vector2(5, 10),
                 ControlPadding = new Vector2(0, 3)
             };
 
@@ -1111,7 +1111,7 @@ namespace LTMessages
                     var label = new Label
                     {
                         Text = message.Title,
-                        Width = 200,
+                        Width = 194,
                         Height = 28,
                         TextColor = new Color(220, 200, 150, 255),  // GW2 gold color
                         Font = GameService.Content.DefaultFont16,
@@ -1165,7 +1165,7 @@ namespace LTMessages
                 flowPanelHeight = Math.Max(flowPanelHeight, minFlowPanelHeight);
 
                 // Update flow panel size
-                _messageFlowPanel.Size = new Point(210, flowPanelHeight);
+                _messageFlowPanel.Size = new Point(204, flowPanelHeight);
 
                 // Update popup window height (header 40px + flow panel + bottom padding 10px)
                 int popupHeight = 40 + flowPanelHeight + 10;
