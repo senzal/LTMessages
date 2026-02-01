@@ -1913,7 +1913,12 @@ gaming experience even better!
 Your support, feedback, and contributions
 help make tools like this possible.
 
-Happy commanding! ♥";
+Happy commanding! ♥
+
+---
+
+For full documentation, visit the wiki:
+https://github.com/senzal/LTMessages/wiki";
 
             var helpLabel = new Label
             {
