@@ -1084,11 +1084,11 @@ namespace LTMessages
                 WidthSizingMode = SizingMode.Fill,
                 HeightSizingMode = SizingMode.Fill,
                 CanScroll = true,
-                Location = new Point(5, 35),
+                Location = new Point(5, 40),
                 Size = new Point(210, 260),
                 Parent = _popupWindow,
-                OuterControlPadding = new Vector2(8, 8),
-                ControlPadding = new Vector2(0, 2)
+                OuterControlPadding = new Vector2(10, 10),
+                ControlPadding = new Vector2(0, 3)
             };
 
             // Add click handler to screen to close popup when clicking outside
@@ -1112,7 +1112,7 @@ namespace LTMessages
                     {
                         Text = message.Title,
                         Width = 200,
-                        Height = 26,
+                        Height = 28,
                         TextColor = new Color(220, 200, 150, 255),  // GW2 gold color
                         Font = GameService.Content.DefaultFont16,
                         ShowShadow = true,
@@ -1149,25 +1149,26 @@ namespace LTMessages
                     };
                 }
 
-                // Calculate dynamic height based on message count (max 10 items visible)
+                // Calculate dynamic height based on message count (max 15 items visible)
+                // Minimum 3 message spaces even when list is empty/short
                 int itemCount = _messages.Count;
-                int visibleItems = Math.Min(itemCount, 10);
-                int itemHeight = 26; // Height of each message label
-                int itemPadding = 2; // Padding between items
-                int outerPadding = 16; // Top and bottom padding (8+8)
+                int visibleItems = Math.Min(itemCount, 15);
+                int itemHeight = 28; // Height of each message label
+                int itemPadding = 3; // Padding between items
+                int outerPadding = 20; // Top and bottom padding (10+10 for nice border spacing)
 
                 // Calculate flow panel height
                 int flowPanelHeight = (visibleItems * (itemHeight + itemPadding)) + outerPadding;
 
-                // Minimum height to show at least 3 items for symmetry
+                // Minimum height to show at least 3 items (even for 0, 1, or 2 messages)
                 int minFlowPanelHeight = (3 * (itemHeight + itemPadding)) + outerPadding;
                 flowPanelHeight = Math.Max(flowPanelHeight, minFlowPanelHeight);
 
                 // Update flow panel size
                 _messageFlowPanel.Size = new Point(210, flowPanelHeight);
 
-                // Update popup window height (header 35px + flow panel + bottom padding 5px)
-                int popupHeight = 35 + flowPanelHeight + 5;
+                // Update popup window height (header 40px + flow panel + bottom padding 10px)
+                int popupHeight = 40 + flowPanelHeight + 10;
                 _popupWindow.Size = new Point(220, popupHeight);
 
                 // Update close button position (top-right corner)
