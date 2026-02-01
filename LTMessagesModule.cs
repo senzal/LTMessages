@@ -1260,19 +1260,11 @@ namespace LTMessages
 
             try
             {
+                // Refresh the UI to ensure proper sizing
+                RefreshMessageUI();
+
                 // Get mouse position
                 var mousePos = GameService.Input.Mouse.Position;
-
-                // Adjust window size based on content (add 40 for close button area at top)
-                int itemHeight = 25;
-                int windowHeight = Math.Min(_messages.Count * itemHeight + 60, 440);
-                _popupWindow.Size = new Point(200, windowHeight);
-
-                // Update close button position to match new window width
-                if (_popupCloseButton != null)
-                {
-                    _popupCloseButton.Location = new Point(_popupWindow.Width - 30, 5);
-                }
 
                 // Position at cursor, but keep on screen
                 int x = mousePos.X;
