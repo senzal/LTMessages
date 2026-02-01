@@ -1374,7 +1374,7 @@ namespace LTMessages
 
             // All buttons same size (70px) for consistency
 
-            // Top row: [Defaults] [Add] [Save] [Close]
+            // Top row: [Defaults] [Add] [Close]
             // Defaults button (aligned above Reset All)
             var defaultButton = new StandardButton
             {
@@ -1395,25 +1395,15 @@ namespace LTMessages
             };
             addButton.Click += (s, e) => ShowEditDialog(-1, null);
 
-            // Save button
-            var saveButton = new StandardButton
-            {
-                Text = "Save",
-                Width = 70,
-                Location = new Point(330, 8),
-                Parent = _editorWindow
-            };
-            saveButton.Click += (s, e) => SaveMessagesToFile();
-
             // Close button
             var closeButton = new StandardButton
             {
                 Text = "Close",
                 Width = 70,
-                Location = new Point(410, 8),
+                Location = new Point(330, 8),
                 Parent = _editorWindow
             };
-            closeButton.Click += (s, e) => _editorWindow.Hide();
+            closeButton.Click += (s, e) => CloseEditor();
 
             // Bottom row: [Dropdown] [Reset All] [Rename] [Help]
             // Reset All button (aligned below Defaults)
@@ -1683,6 +1673,7 @@ namespace LTMessages
             _editDialogWindow.Hide();
             RefreshEditorUI();
             RefreshMessageUI();
+            SaveMessagesToFile(); // Auto-save to file when message is saved
         }
 
         private void DeleteMessage(int index)
@@ -1802,6 +1793,109 @@ namespace LTMessages
                     break;
                 }
             }
+        }
+
+        private void CloseEditor()
+        {
+            // Check if there are unsaved changes in the edit dialog
+            if (_editDialogWindow != null && _editDialogWindow.Visible)
+            {
+                // Show confirmation dialog for closing editor with unsaved changes
+                ShowCloseEditorConfirmation();
+            }
+            else
+            {
+                // No unsaved changes, close normally
+                _editorWindow.Hide();
+            }
+        }
+
+        private void ShowCloseEditorConfirmation()
+        {
+            // Create confirmation dialog
+            var confirmDialog = new Panel
+            {
+                Size = new Point(450, 180),
+                ZIndex = 10002, // Above edit dialog
+                Parent = GameService.Graphics.SpriteScreen,
+                BackgroundColor = new Color(25, 20, 15, 250),
+                ShowBorder = true
+            };
+
+            // Center on screen
+            int x = (GameService.Graphics.SpriteScreen.Width - confirmDialog.Width) / 2;
+            int y = (GameService.Graphics.SpriteScreen.Height - confirmDialog.Height) / 2;
+            confirmDialog.Location = new Point(x, y);
+
+            // Title
+            new Label
+            {
+                Text = "Unsaved Changes",
+                Font = GameService.Content.DefaultFont16,
+                AutoSizeHeight = true,
+                AutoSizeWidth = true,
+                Location = new Point(10, 10),
+                TextColor = new Color(220, 200, 150, 255),
+                Parent = confirmDialog
+            };
+
+            // Message
+            new Label
+            {
+                Text = "You have unsaved changes in the message editor.\nWhat would you like to do?",
+                Location = new Point(10, 45),
+                Width = 430,
+                Height = 50,
+                TextColor = Color.White,
+                WrapText = true,
+                Parent = confirmDialog
+            };
+
+            // Save and Close button
+            var saveButton = new StandardButton
+            {
+                Text = "Save & Close",
+                Width = 130,
+                Location = new Point(10, 130),
+                Parent = confirmDialog
+            };
+            saveButton.Click += (s, e) =>
+            {
+                SaveEditedMessage();
+                confirmDialog.Dispose();
+                _editorWindow.Hide();
+            };
+
+            // Discard and Close button
+            var discardButton = new StandardButton
+            {
+                Text = "Discard & Close",
+                Width = 130,
+                Location = new Point(150, 130),
+                Parent = confirmDialog
+            };
+            discardButton.Click += (s, e) =>
+            {
+                _editDialogWindow.Hide();
+                confirmDialog.Dispose();
+                _editorWindow.Hide();
+            };
+
+            // Cancel button
+            var cancelButton = new StandardButton
+            {
+                Text = "Cancel",
+                Width = 130,
+                Location = new Point(290, 130),
+                Parent = confirmDialog
+            };
+            cancelButton.Click += (s, e) =>
+            {
+                confirmDialog.Dispose();
+                // Stay in editor - don't close
+            };
+
+            confirmDialog.Show();
         }
 
         private TextBox _renameTextBox;
