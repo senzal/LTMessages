@@ -1374,8 +1374,8 @@ namespace LTMessages
 
             // All buttons same size (70px) for consistency
 
-            // Top row: [Defaults] [Add] [Close]
-            // Defaults button (aligned above Reset All)
+            // Top row: [Defaults] [Reset All] [Add] [Close]
+            // Defaults button
             var defaultButton = new StandardButton
             {
                 Text = "Defaults",
@@ -1385,12 +1385,22 @@ namespace LTMessages
             };
             defaultButton.Click += (s, e) => RestoreDefaultMessages();
 
+            // Reset All button
+            var resetButton = new StandardButton
+            {
+                Text = "Reset All",
+                Width = 70,
+                Location = new Point(250, 8),
+                Parent = _editorWindow
+            };
+            resetButton.Click += (s, e) => ResetAllListsToDefaults();
+
             // Add button
             var addButton = new StandardButton
             {
                 Text = "Add",
                 Width = 70,
-                Location = new Point(250, 8),
+                Location = new Point(330, 8),
                 Parent = _editorWindow
             };
             addButton.Click += (s, e) => ShowEditDialog(-1, null);
@@ -1400,22 +1410,12 @@ namespace LTMessages
             {
                 Text = "Close",
                 Width = 70,
-                Location = new Point(330, 8),
+                Location = new Point(410, 8),
                 Parent = _editorWindow
             };
             closeButton.Click += (s, e) => CloseEditor();
 
-            // Bottom row: [Dropdown] [Reset All] [Rename] [Help]
-            // Reset All button (aligned below Defaults)
-            var resetButton = new StandardButton
-            {
-                Text = "Reset All",
-                Width = 70,
-                Location = new Point(170, 40),
-                Parent = _editorWindow
-            };
-            resetButton.Click += (s, e) => ResetAllListsToDefaults();
-
+            // Bottom row: [Dropdown] [Rename] [Help]
             // Rename List button
             var renameButton = new StandardButton
             {
