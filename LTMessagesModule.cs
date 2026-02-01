@@ -110,6 +110,7 @@ namespace LTMessages
         private TextBox _editMessageTextBox;
         private MessageEntry _editingMessage;
         private int _editingMessageIndex = -1;
+        private bool _suppressListSwitchWarning = false; // Flag to suppress unsaved changes warning
 
         // Data
         private List<MessageEntry> _messages = new List<MessageEntry>();
@@ -982,9 +983,12 @@ namespace LTMessages
                 _cornerIcon.Click += OnCornerIconClicked;
                 _cornerIcon.RightMouseButtonPressed += OnCornerIconRightClicked;
 
-                // Update tooltip based on LT mode
+                // Update tooltip based on LT mode and chat settings
                 UpdateCornerIconTooltip();
                 _ltModeEnabled.SettingChanged += (s, e) => UpdateCornerIconTooltip();
+                _chatFocus.SettingChanged += (s, e) => UpdateCornerIconTooltip();
+                _chatAction.SettingChanged += (s, e) => UpdateCornerIconTooltip();
+                _chatCommand.SettingChanged += (s, e) => UpdateCornerIconTooltip();
 
                 Logger.Info("Corner icon created");
             }
@@ -999,7 +1003,40 @@ namespace LTMessages
             if (_cornerIcon != null)
             {
                 string status = _ltModeEnabled.Value ? "ENABLED" : "DISABLED";
-                _cornerIcon.BasicTooltipText = $"LT Messages\nLeft-click: Show messages\nRight-click: Open editor\nLT Mode: {status}";
+
+                // Get friendly names for mode settings
+                string focus = _chatFocus.Value == ChatFocus.ShiftEnter ? "Shift+Enter" : "Enter";
+                string action = _chatAction.Value == ChatAction.Send ? "Send" : "Paste";
+                string command = GetChatCommandDisplayName(_chatCommand.Value);
+
+                _cornerIcon.BasicTooltipText = $"LT Messages\nLeft-click: Show messages\nRight-click: Open editor\nLT Mode: {status}\nMode: {focus} | {action} | {command}";
+            }
+        }
+
+        private string GetChatCommandDisplayName(ChatCommand command)
+        {
+            switch (command)
+            {
+                case ChatCommand.Default: return "Default";
+                case ChatCommand.Squad: return "Squad";
+                case ChatCommand.Subgroup: return "Subgroup";
+                case ChatCommand.Map: return "Map";
+                case ChatCommand.Say: return "Say";
+                case ChatCommand.Party: return "Party";
+                case ChatCommand.Team: return "Team";
+                case ChatCommand.Guild: return "Guild";
+                case ChatCommand.Guild1: return "Guild1";
+                case ChatCommand.Guild2: return "Guild2";
+                case ChatCommand.Guild3: return "Guild3";
+                case ChatCommand.Guild4: return "Guild4";
+                case ChatCommand.Guild5: return "Guild5";
+                case ChatCommand.Guild6: return "Guild6";
+                case ChatCommand.Party1: return "Party1";
+                case ChatCommand.Party2: return "Party2";
+                case ChatCommand.Party3: return "Party3";
+                case ChatCommand.Party4: return "Party4";
+                case ChatCommand.Party5: return "Party5";
+                default: return command.ToString();
             }
         }
 
@@ -1304,6 +1341,22 @@ namespace LTMessages
             // Handle dropdown selection change
             _listSelectorDropdown.ValueChanged += (s, e) =>
             {
+                // Check if there are unsaved changes
+                if (!_suppressListSwitchWarning && _editDialogWindow != null && _editDialogWindow.Visible)
+                {
+                    // Save the target list selection
+                    string targetList = _listSelectorDropdown.SelectedItem;
+
+                    // Revert dropdown to current list (will be changed if user confirms)
+                    _suppressListSwitchWarning = true;
+                    _listSelectorDropdown.SelectedItem = GetListDisplayName(_currentListIndex);
+                    _suppressListSwitchWarning = false;
+
+                    // Show confirmation dialog
+                    ShowUnsavedChangesDialog(targetList);
+                    return;
+                }
+
                 // Find which list index matches the selected name
                 string selected = _listSelectorDropdown.SelectedItem;
                 for (int i = 0; i < MessageListCount; i++)
@@ -1639,6 +1692,115 @@ namespace LTMessages
                 _messages.RemoveAt(index);
                 RefreshEditorUI();
                 RefreshMessageUI();
+            }
+        }
+
+        private void ShowUnsavedChangesDialog(string targetListName)
+        {
+            // Create confirmation dialog
+            var confirmDialog = new Panel
+            {
+                Size = new Point(450, 180),
+                ZIndex = 10002, // Above edit dialog
+                Parent = GameService.Graphics.SpriteScreen,
+                BackgroundColor = new Color(25, 20, 15, 250),
+                ShowBorder = true
+            };
+
+            // Center on screen
+            int x = (GameService.Graphics.SpriteScreen.Width - confirmDialog.Width) / 2;
+            int y = (GameService.Graphics.SpriteScreen.Height - confirmDialog.Height) / 2;
+            confirmDialog.Location = new Point(x, y);
+
+            // Title
+            new Label
+            {
+                Text = "Unsaved Changes",
+                Font = GameService.Content.DefaultFont16,
+                AutoSizeHeight = true,
+                AutoSizeWidth = true,
+                Location = new Point(10, 10),
+                TextColor = new Color(220, 200, 150, 255),
+                Parent = confirmDialog
+            };
+
+            // Message
+            new Label
+            {
+                Text = "You have unsaved changes in the message editor.\nWhat would you like to do?",
+                Location = new Point(10, 45),
+                Width = 430,
+                Height = 50,
+                TextColor = Color.White,
+                WrapText = true,
+                Parent = confirmDialog
+            };
+
+            // Save and Switch button
+            var saveButton = new StandardButton
+            {
+                Text = "Save & Switch",
+                Width = 130,
+                Location = new Point(10, 130),
+                Parent = confirmDialog
+            };
+            saveButton.Click += (s, e) =>
+            {
+                SaveEditedMessage();
+                confirmDialog.Dispose();
+                SwitchToList(targetListName);
+            };
+
+            // Discard and Switch button
+            var discardButton = new StandardButton
+            {
+                Text = "Discard & Switch",
+                Width = 130,
+                Location = new Point(150, 130),
+                Parent = confirmDialog
+            };
+            discardButton.Click += (s, e) =>
+            {
+                _editDialogWindow.Hide();
+                confirmDialog.Dispose();
+                SwitchToList(targetListName);
+            };
+
+            // Cancel button
+            var cancelButton = new StandardButton
+            {
+                Text = "Cancel",
+                Width = 130,
+                Location = new Point(290, 130),
+                Parent = confirmDialog
+            };
+            cancelButton.Click += (s, e) =>
+            {
+                confirmDialog.Dispose();
+                // Stay on current list - dropdown already reverted
+            };
+
+            confirmDialog.Show();
+        }
+
+        private void SwitchToList(string listName)
+        {
+            // Update dropdown selection and trigger list switch
+            _suppressListSwitchWarning = true;
+            _listSelectorDropdown.SelectedItem = listName;
+            _suppressListSwitchWarning = false;
+
+            // Find which list index matches the selected name
+            for (int i = 0; i < MessageListCount; i++)
+            {
+                if (GetListDisplayName(i) == listName)
+                {
+                    _currentListIndex = i;
+                    Logger.Info($"Switched to editing {listName} (index {i})");
+                    LoadMessagesFromFile();
+                    RefreshEditorUI();
+                    break;
+                }
             }
         }
 
