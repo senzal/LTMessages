@@ -27,74 +27,29 @@ namespace LTMessages
         internal ContentsManager ContentsManager => this.ModuleParameters.ContentsManager;
 
         // Settings
-        private SettingEntry<ChatFocus> _chatFocus;
-        private SettingEntry<ChatAction> _chatAction;
-        private SettingEntry<ChatCommand> _chatCommand;
-        private SettingEntry<SendDelay> _sendDelay;
+        private SettingEntry<int> _activeMessageList; // Which list (1-5) is active for sending messages
+        private SettingEntry<bool> _autoSendEnabled;
+        private SettingEntry<int> _sendDelayMs;
         private SettingEntry<bool> _showCornerIcon;
         private SettingEntry<KeyBinding> _popupKeybind;
         private SettingEntry<KeyBinding> _toggleLTModeKeybind;
         private SettingEntry<KeyBinding> _openEditorKeybind;
+        private SettingEntry<ChatMethod> _chatMethod;
+        private SettingEntry<ChatCommand> _chatCommand;
+        private SettingEntry<int> _maxMessageLength;
         private SettingEntry<bool> _ltModeEnabled;
 
-        // Internal data (not exposed in settings)
-        private int _activeMessageList = 0; // Which list (0-5) is active for sending messages
-        private Dictionary<int, string> _listNames = new Dictionary<int, string>();
-
         // Enums for settings
-        private enum ChatFocus
+        private enum ChatMethod
         {
-            ShiftEnter,  // Opens squad chat (Shift+Enter)
-            Enter        // Opens last used chat (Enter)
-        }
-
-        private enum ChatAction
-        {
-            PasteOnly,   // Copy to clipboard only
-            Send         // Type and send the message
+            ShiftEnter,      // Direct squad chat (Shift+Enter)
+            SlashCommand     // Chat command (Shift+/)
         }
 
         private enum ChatCommand
         {
-            Default,     // Use whatever channel is already selected
-            Squad,       // /squad
-            Subgroup,    // /subgroup
-            Party1,      // /1
-            Party2,      // /2
-            Party3,      // /3
-            Party4,      // /4
-            Party5,      // /5
-            Guild,       // /guild
-            Guild1,      // /g1
-            Guild2,      // /g2
-            Guild3,      // /g3
-            Guild4,      // /g4
-            Guild5,      // /g5
-            Guild6,      // /g6
-            Say,         // /say
-            Map,         // /map
-            Party,       // /party
-            Team         // /team
-        }
-
-        private enum SendDelay
-        {
-            _5ms = 5,
-            _8ms = 8,
-            _10ms = 10,
-            _12ms = 12,
-            _15ms = 15,
-            _20ms = 20,
-            _25ms = 25,
-            _30ms = 30,
-            _35ms = 35,
-            _40ms = 40,
-            _50ms = 50,
-            _60ms = 60,
-            _75ms = 75,
-            _100ms = 100,
-            _125ms = 125,
-            _150ms = 150
+            Squad,      // /squad
+            Subgroup    // /subgroup
         }
 
         // UI Components
@@ -111,17 +66,18 @@ namespace LTMessages
         private MessageEntry _editingMessage;
         private int _editingMessageIndex = -1;
 
-        // Data
-        private List<MessageEntry> _messages = new List<MessageEntry>();
+        // Data - Multiple message lists
+        private const int MessageListCount = 5;
+        private List<MessageEntry>[] _messageLists = new List<MessageEntry>[MessageListCount];
+        private int _editingListIndex = 0; // Which list is currently being edited (0-4)
         private FileSystemWatcher _fileWatcher;
-        private int _currentListIndex = 0; // Which list (0-5) is currently loaded (for editing)
 
         // Constants
-        private const int MessageListCount = 6; // Support 6 lists total (0-5)
         private static readonly string DefaultFilePathBase = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             @"Guild Wars 2\addons\blishhud\ltmessages\");
-        private const int DefaultMaxMessageLength = 199;  // GW2 chat limit
+        private const int DefaultSendDelayMs = 200;
+        private const int DefaultMaxMessageLength = 200;  // GW2 chat limit
 
         #region Windows API for Keyboard Input
 
@@ -317,6 +273,12 @@ namespace LTMessages
 
         protected override void DefineSettings(SettingCollection settings)
         {
+            _messageFilePath = settings.DefineSetting(
+                "MessageFilePath",
+                DefaultFilePath,
+                () => "Message File Path",
+                () => "Path to messages.txt - Edit this file with any text editor to customize your messages. File auto-reloads when changed.");
+
             _popupKeybind = settings.DefineSetting(
                 "PopupKeybind",
                 new KeyBinding(),
@@ -347,36 +309,37 @@ namespace LTMessages
                 () => "LT Mode Enabled",
                 () => "Enable this when you are a Lieutenant or Commander. Messages won't send when disabled.");
 
-            _chatFocus = settings.DefineSetting(
-                "ChatFocus",
-                ChatFocus.ShiftEnter,
-                () => "Chat Focus",
-                () => "Shift+Enter = Open squad chat directly | Enter = Open last used chat");
+            _autoSendEnabled = settings.DefineSetting(
+                "AutoSendEnabled",
+                false,
+                () => "Auto-send messages",
+                () => "Automatically send messages to chat (if disabled, copies to clipboard only)");
 
-            _chatAction = settings.DefineSetting(
-                "ChatAction",
-                ChatAction.Send,
-                () => "Chat Action",
-                () => "Send = Type and send message automatically | Paste Only = Copy to clipboard");
+            _sendDelayMs = settings.DefineSetting(
+                "SendDelayMs",
+                DefaultSendDelayMs,
+                () => "Send delay (ms)",
+                () => "Delay between keystrokes when auto-sending (adjust if messages don't send reliably)");
+            _sendDelayMs.SetRange(50, 500);
+
+            _chatMethod = settings.DefineSetting(
+                "ChatMethod",
+                ChatMethod.ShiftEnter,
+                () => "Chat Method",
+                () => "Shift+Enter = Direct squad chat | Shift+/ = Use chat command");
 
             _chatCommand = settings.DefineSetting(
                 "ChatCommand",
-                ChatCommand.Default,
+                ChatCommand.Squad,
                 () => "Chat Command",
-                () => "Which chat channel to send to. Default = Use whatever channel is already active.");
+                () => "Which command to use when Chat Method is set to Shift+/ (squad or subgroup)");
 
-            _sendDelay = settings.DefineSetting(
-                "SendDelay",
-                SendDelay._40ms,
-                () => "Typing Delay (ms)",
-                () => "Delay between keystrokes when typing messages (adjust if messages don't send reliably)");
-
-            // Migrate old delay values that are no longer valid
-            if (!Enum.IsDefined(typeof(SendDelay), _sendDelay.Value))
-            {
-                Logger.Info($"Migrating invalid send delay value to default (40ms)");
-                _sendDelay.Value = SendDelay._40ms;
-            }
+            _maxMessageLength = settings.DefineSetting(
+                "MaxMessageLength",
+                DefaultMaxMessageLength,
+                () => "Max Message Length",
+                () => "Maximum characters per message (GW2 limit is around 200)");
+            _maxMessageLength.SetRange(50, 500);
 
             // Add button to open message editor
             var openEditorButton = settings.DefineSetting(
@@ -400,40 +363,20 @@ namespace LTMessages
                 }
             };
 
-            // Add button to open help dialog
-            var openHelpButton = settings.DefineSetting(
-                "OpenHelpButton",
-                false,
-                () => "Show Help",
-                () => "Toggle this on to see help and configuration guide");
-
-            openHelpButton.SettingChanged += (s, e) =>
-            {
-                if (e.NewValue && !e.PreviousValue)
-                {
-                    ShowHelpDialog();
-
-                    // Reset button
-                    Task.Run(async () =>
-                    {
-                        await Task.Delay(100);
-                        openHelpButton.Value = false;
-                    });
-                }
-            };
+            // Update file watcher when path changes
+            _messageFilePath.SettingChanged += OnFilePathChanged;
         }
 
         protected override async Task LoadAsync()
         {
             Logger.Info("Loading LT Messages module...");
 
-            // Load internal data (active list and custom names)
-            LoadInternalData();
+            // Initialize with embedded defaults first (module is immediately functional)
+            _messages = GetDefaultMessages();
+            Logger.Info($"Initialized with {_messages.Count} default messages");
 
-            // Load the active message list
-            _currentListIndex = _activeMessageList;
+            // Load messages from file (will override defaults if file exists)
             LoadMessagesFromFile();
-            Logger.Info($"Loaded {GetListDisplayName(_currentListIndex)} with {_messages.Count} messages");
 
             // Setup file watcher for live reload
             SetupFileWatcher();
@@ -481,10 +424,8 @@ namespace LTMessages
         {
             Logger.Info("Unloading LT Messages module...");
 
-            // Save internal data before unloading
-            SaveInternalData();
-
             // Unsubscribe from events
+            _messageFilePath.SettingChanged -= OnFilePathChanged;
             _showCornerIcon.SettingChanged -= OnShowCornerIconChanged;
 
             if (_popupKeybind?.Value != null)
@@ -519,8 +460,6 @@ namespace LTMessages
             _popupWindow?.Dispose();
             _editorWindow?.Dispose();
             _editDialogWindow?.Dispose();
-            _renameDialogWindow?.Dispose();
-            _helpDialogWindow?.Dispose();
 
             // Clear messages
             _messages.Clear();
@@ -577,155 +516,9 @@ namespace LTMessages
             };
         }
 
-        // Get a single sample message for lists 2-5
-        private List<MessageEntry> GetSampleMessage()
-        {
-            return new List<MessageEntry>
-            {
-                new MessageEntry("Stack", "Stack on Tag")
-            };
-        }
-
-        // Get file path for a specific list index (0-5)
-        private string GetFilePathForList(int listIndex)
-        {
-            if (listIndex == 0)
-            {
-                // List 0 uses messages.txt for backwards compatibility
-                return Path.Combine(DefaultFilePathBase, "messages.txt");
-            }
-            else
-            {
-                // Lists 1-5 use messages_1.txt through messages_5.txt
-                return Path.Combine(DefaultFilePathBase, $"messages_{listIndex}.txt");
-            }
-        }
-
-        // Load internal data (active list and custom names) from file
-        private void LoadInternalData()
-        {
-            _listNames.Clear();
-
-            string dataFile = Path.Combine(DefaultFilePathBase, "module_data.txt");
-
-            try
-            {
-                if (File.Exists(dataFile))
-                {
-                    string[] lines = File.ReadAllLines(dataFile);
-                    foreach (string line in lines)
-                    {
-                        if (line.StartsWith("ActiveList="))
-                        {
-                            if (int.TryParse(line.Substring(11), out int listIndex))
-                            {
-                                _activeMessageList = listIndex;
-                            }
-                        }
-                        else if (line.StartsWith("ListName:"))
-                        {
-                            // Format: ListName:0:Name
-                            string[] parts = line.Substring(9).Split(new[] { ':' }, 2);
-                            if (parts.Length == 2 && int.TryParse(parts[0], out int index))
-                            {
-                                _listNames[index] = parts[1];
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Failed to load internal data");
-            }
-
-            // Fill in any missing default names
-            for (int i = 0; i < MessageListCount; i++)
-            {
-                if (!_listNames.ContainsKey(i))
-                {
-                    _listNames[i] = (i == 0) ? "Default" : $"List {i}";
-                }
-            }
-
-            // Ensure active list is valid
-            if (_activeMessageList < 0 || _activeMessageList >= MessageListCount)
-            {
-                _activeMessageList = 0;
-            }
-        }
-
-        // Save internal data to file
-        private void SaveInternalData()
-        {
-            string dataFile = Path.Combine(DefaultFilePathBase, "module_data.txt");
-
-            try
-            {
-                // Create directory if needed
-                string directory = Path.GetDirectoryName(dataFile);
-                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-
-                var lines = new List<string>();
-                lines.Add($"ActiveList={_activeMessageList}");
-
-                foreach (var kvp in _listNames)
-                {
-                    lines.Add($"ListName:{kvp.Key}:{kvp.Value}");
-                }
-
-                File.WriteAllLines(dataFile, lines);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Failed to save internal data");
-            }
-        }
-
-        // Get display name for a list
-        private string GetListDisplayName(int listIndex)
-        {
-            if (_listNames.ContainsKey(listIndex))
-            {
-                return _listNames[listIndex];
-            }
-            return (listIndex == 0) ? "Default" : $"List {listIndex}";
-        }
-
-        // Get chat command string from enum
-        private string GetChatCommandString(ChatCommand command)
-        {
-            switch (command)
-            {
-                case ChatCommand.Default: return "";
-                case ChatCommand.Squad: return "/squad";
-                case ChatCommand.Subgroup: return "/subgroup";
-                case ChatCommand.Party1: return "/1";
-                case ChatCommand.Party2: return "/2";
-                case ChatCommand.Party3: return "/3";
-                case ChatCommand.Party4: return "/4";
-                case ChatCommand.Party5: return "/5";
-                case ChatCommand.Guild: return "/guild";
-                case ChatCommand.Guild1: return "/g1";
-                case ChatCommand.Guild2: return "/g2";
-                case ChatCommand.Guild3: return "/g3";
-                case ChatCommand.Guild4: return "/g4";
-                case ChatCommand.Guild5: return "/g5";
-                case ChatCommand.Guild6: return "/g6";
-                case ChatCommand.Say: return "/say";
-                case ChatCommand.Map: return "/map";
-                case ChatCommand.Party: return "/party";
-                case ChatCommand.Team: return "/team";
-                default: return "";
-            }
-        }
-
         private void LoadMessagesFromFile()
         {
-            string filePath = GetFilePathForList(_currentListIndex);
+            string filePath = _messageFilePath.Value;
 
             try
             {
@@ -740,9 +533,9 @@ namespace LTMessages
                 // Create default file if it doesn't exist
                 if (!File.Exists(filePath))
                 {
-                    CreateDefaultMessageFile(filePath, _currentListIndex);
-                    // Use appropriate defaults based on list index
-                    _messages = (_currentListIndex == 0) ? GetDefaultMessages() : GetSampleMessage();
+                    CreateDefaultMessageFile(filePath);
+                    // Use embedded defaults until file is created
+                    _messages = GetDefaultMessages();
                     RefreshMessageUI();
                     return;
                 }
@@ -772,11 +565,12 @@ namespace LTMessages
                         continue;
                     }
 
-                    // Enforce max message length (GW2 limit: 199 characters)
-                    if (message.Length > DefaultMaxMessageLength)
+                    // Enforce max message length
+                    int maxLen = _maxMessageLength?.Value ?? DefaultMaxMessageLength;
+                    if (message.Length > maxLen)
                     {
-                        message = message.Substring(0, DefaultMaxMessageLength);
-                        Logger.Warn($"Message truncated to {DefaultMaxMessageLength} characters: {message}");
+                        message = message.Substring(0, maxLen);
+                        Logger.Warn($"Message truncated to {maxLen} characters: {message}");
                     }
 
                     // MessageEntry will auto-truncate title if needed
@@ -811,20 +605,15 @@ namespace LTMessages
             }
         }
 
-        private void CreateDefaultMessageFile(string filePath, int listIndex)
+        private void CreateDefaultMessageFile(string filePath)
         {
             try
             {
-                List<string> defaultMessages;
-
-                if (listIndex == 0)
+                var defaultMessages = new[]
                 {
-                    // List 0 gets the full 30 default messages
-                    defaultMessages = new List<string>
-                    {
-                        "# ========================================",
-                        "# LT Messages Configuration File - List 0 (Default)",
-                        "# ========================================",
+                    "# ========================================",
+                    "# LT Messages Configuration File",
+                    "# ========================================",
                     "# ",
                     "# TO EDIT: Open this file in Notepad, VSCode, or any text editor",
                     "# FILE LOCATION: " + filePath,
@@ -833,7 +622,7 @@ namespace LTMessages
                     "# ",
                     "# FORMAT: Title,Message",
                     "#   Title: max 16 characters (shown in popup menu)",
-                    "#   Message: max 199 characters (GW2 chat limit)",
+                    "#   Message: max 200 characters (default GW2 chat limit)",
                     "# ",
                     "# Lines starting with # are comments and ignored",
                     "# ========================================",
@@ -875,38 +664,12 @@ namespace LTMessages
                     "Guard,We need 1-2 people to guard this spot",
                     "Loot,F for loot! Some chests need manual looting",
                     "Help,If you get lost ask for help!",
-                        "No-Drop,Please don't drop items. Let Commander set up stations.",
-                        "Break,We are taking a short break. BRB"
-                    };
-                }
-                else
-                {
-                    // Lists 1-5 get a single sample message
-                    defaultMessages = new List<string>
-                    {
-                        "# ========================================",
-                        $"# LT Messages Configuration File - List {listIndex}",
-                        "# ========================================",
-                        "# ",
-                        "# TO EDIT: Open this file in Notepad, VSCode, or any text editor",
-                        "# FILE LOCATION: " + filePath,
-                        "# ",
-                        "# Use this list for specific event types (WvW, Metas, HP Trains, etc.)",
-                        "# Add your custom messages below.",
-                        "# ",
-                        "# FORMAT: Title,Message",
-                        "#   Title: max 16 characters (shown in popup menu)",
-                        "#   Message: max 199 characters (GW2 chat limit)",
-                        "# ",
-                        "# Lines starting with # are comments and ignored",
-                        "# ========================================",
-                        "",
-                        "Stack,Stack on Tag"
-                    };
-                }
+                    "No-Drop,Please don't drop items. Let Commander set up stations.",
+                    "Break,We are taking a short break. BRB"
+                };
 
                 File.WriteAllLines(filePath, defaultMessages);
-                Logger.Info($"Created default message file at {filePath} (List {listIndex})");
+                Logger.Info($"Created default message file at {filePath}");
             }
             catch (Exception ex)
             {
@@ -918,8 +681,7 @@ namespace LTMessages
         {
             try
             {
-                // Watch the currently active list file
-                string filePath = GetFilePathForList(_activeMessageList);
+                string filePath = _messageFilePath.Value;
                 string directory = Path.GetDirectoryName(filePath);
                 string fileName = Path.GetFileName(filePath);
 
@@ -938,7 +700,7 @@ namespace LTMessages
                 _fileWatcher.Changed += OnFileChanged;
                 _fileWatcher.EnableRaisingEvents = true;
 
-                Logger.Info($"File watcher setup for {filePath} (List {_activeMessageList})");
+                Logger.Info($"File watcher setup for {filePath}");
             }
             catch (Exception ex)
             {
@@ -950,13 +712,14 @@ namespace LTMessages
         {
             // Debounce file changes (file can trigger multiple events)
             Thread.Sleep(100);
-            Logger.Info($"Message file changed for List {_activeMessageList}, reloading...");
+            Logger.Info("Message file changed, reloading...");
+            LoadMessagesFromFile();
+        }
 
-            // If the changed file is the active list, reload it
-            if (_activeMessageList == _currentListIndex)
-            {
-                LoadMessagesFromFile();
-            }
+        private void OnFilePathChanged(object sender, ValueChangedEventArgs<string> e)
+        {
+            LoadMessagesFromFile();
+            SetupFileWatcher();
         }
 
         #endregion
@@ -1286,122 +1049,55 @@ namespace LTMessages
                 Parent = _editorWindow
             };
 
-            // List selector dropdown
-            _listSelectorDropdown = new Dropdown
-            {
-                Location = new Point(10, 40),
-                Width = 150,
-                Parent = _editorWindow
-            };
-
-            // Populate dropdown with list options (0-5)
-            for (int i = 0; i < MessageListCount; i++)
-            {
-                _listSelectorDropdown.Items.Add(GetListDisplayName(i));
-            }
-            _listSelectorDropdown.SelectedItem = GetListDisplayName(_currentListIndex);
-
-            // Handle dropdown selection change
-            _listSelectorDropdown.ValueChanged += (s, e) =>
-            {
-                // Find which list index matches the selected name
-                string selected = _listSelectorDropdown.SelectedItem;
-                for (int i = 0; i < MessageListCount; i++)
-                {
-                    if (GetListDisplayName(i) == selected)
-                    {
-                        _currentListIndex = i;
-                        Logger.Info($"Switched to editing {selected} (index {i})");
-                        LoadMessagesFromFile();
-                        RefreshEditorUI();
-                        break;
-                    }
-                }
-            };
-
-            // All buttons same size (70px) for consistency
-
-            // Top row: [Defaults] [Add] [Save] [Close]
-            // Defaults button (aligned above Reset All)
-            var defaultButton = new StandardButton
-            {
-                Text = "Defaults",
-                Width = 70,
-                Location = new Point(170, 8),
-                Parent = _editorWindow
-            };
-            defaultButton.Click += (s, e) => RestoreDefaultMessages();
-
-            // Add button
+            // Add button (top right)
             var addButton = new StandardButton
             {
                 Text = "Add",
-                Width = 70,
-                Location = new Point(250, 8),
+                Width = 60,
+                Location = new Point(210, 8),
                 Parent = _editorWindow
             };
             addButton.Click += (s, e) => ShowEditDialog(-1, null);
 
-            // Save button
+            // Save button (top right)
             var saveButton = new StandardButton
             {
                 Text = "Save",
-                Width = 70,
-                Location = new Point(330, 8),
+                Width = 60,
+                Location = new Point(280, 8),
                 Parent = _editorWindow
             };
             saveButton.Click += (s, e) => SaveMessagesToFile();
 
-            // Close button
+            // Restore button (top right)
+            var restoreButton = new StandardButton
+            {
+                Text = "Restore",
+                Width = 70,
+                Location = new Point(350, 8),
+                Parent = _editorWindow
+            };
+            restoreButton.Click += (s, e) => RestoreDefaultMessages();
+
+            // Close button (top right)
             var closeButton = new StandardButton
             {
                 Text = "Close",
-                Width = 70,
-                Location = new Point(410, 8),
+                Width = 60,
+                Location = new Point(420, 8),
                 Parent = _editorWindow
             };
             closeButton.Click += (s, e) => _editorWindow.Hide();
 
-            // Bottom row: [Dropdown] [Reset All] [Rename] [Help]
-            // Reset All button (aligned below Defaults)
-            var resetButton = new StandardButton
-            {
-                Text = "Reset All",
-                Width = 70,
-                Location = new Point(170, 40),
-                Parent = _editorWindow
-            };
-            resetButton.Click += (s, e) => ResetAllListsToDefaults();
-
-            // Rename List button
-            var renameButton = new StandardButton
-            {
-                Text = "Rename",
-                Width = 70,
-                Location = new Point(250, 40),
-                Parent = _editorWindow
-            };
-            renameButton.Click += (s, e) => ShowRenameListDialog();
-
-            // Help button
-            var helpButton = new StandardButton
-            {
-                Text = "Help",
-                Width = 70,
-                Location = new Point(330, 40),
-                Parent = _editorWindow
-            };
-            helpButton.Click += (s, e) => ShowHelpDialog();
-
-            // Message list panel (below dropdown)
+            // Message list panel
             _editorFlowPanel = new FlowPanel
             {
                 FlowDirection = ControlFlowDirection.SingleTopToBottom,
                 WidthSizingMode = SizingMode.Fill,
                 HeightSizingMode = SizingMode.Fill,
                 CanScroll = true,
-                Location = new Point(10, 70),
-                Size = new Point(480, 315),
+                Location = new Point(10, 40),
+                Size = new Point(480, 345),
                 Parent = _editorWindow,
                 OuterControlPadding = new Vector2(5, 5),
                 ControlPadding = new Vector2(0, 3)
@@ -1548,7 +1244,7 @@ namespace LTMessages
             // Message label
             new Label
             {
-                Text = "Message (max 199 chars):",
+                Text = "Message (max 200 chars):",
                 Location = new Point(10, 100),
                 Width = 200,
                 TextColor = Color.White,
@@ -1560,14 +1256,14 @@ namespace LTMessages
             {
                 Location = new Point(10, 120),
                 Width = 380,
-                MaxLength = 199,
+                MaxLength = 200,
                 Parent = _editDialogWindow
             };
 
             // Character counter for message
             var charCountLabel = new Label
             {
-                Text = "0 / 199",
+                Text = "0 / 200",
                 Location = new Point(10, 145),
                 Width = 100,
                 TextColor = Color.Gray,
@@ -1577,7 +1273,7 @@ namespace LTMessages
 
             _editMessageTextBox.TextChanged += (s, e) =>
             {
-                charCountLabel.Text = $"{_editMessageTextBox.Text.Length} / 199";
+                charCountLabel.Text = $"{_editMessageTextBox.Text.Length} / 200";
             };
 
             // Save button
@@ -1642,302 +1338,11 @@ namespace LTMessages
             }
         }
 
-        private TextBox _renameTextBox;
-        private Panel _renameDialogWindow;
-
-        private void ShowRenameListDialog()
-        {
-            if (_renameDialogWindow == null)
-            {
-                CreateRenameDialog();
-            }
-
-            // Set current name
-            _renameTextBox.Text = GetListDisplayName(_currentListIndex);
-
-            // Center on screen
-            int x = (GameService.Graphics.SpriteScreen.Width - _renameDialogWindow.Width) / 2;
-            int y = (GameService.Graphics.SpriteScreen.Height - _renameDialogWindow.Height) / 2;
-            _renameDialogWindow.Location = new Point(x, y);
-
-            _renameDialogWindow.Show();
-            _renameTextBox.Focused = true;
-        }
-
-        private void CreateRenameDialog()
-        {
-            _renameDialogWindow = new Panel
-            {
-                Size = new Point(350, 150),
-                ZIndex = 10002,
-                Parent = GameService.Graphics.SpriteScreen,
-                BackgroundColor = new Color(25, 20, 15, 250),
-                ShowBorder = true
-            };
-
-            // Title
-            new Label
-            {
-                Text = $"Rename {GetListDisplayName(_currentListIndex)}",
-                Font = GameService.Content.DefaultFont16,
-                AutoSizeHeight = true,
-                AutoSizeWidth = true,
-                Location = new Point(10, 10),
-                TextColor = new Color(220, 200, 150, 255),
-                Parent = _renameDialogWindow
-            };
-
-            // Name label
-            new Label
-            {
-                Text = "List Name (max 30 chars):",
-                Location = new Point(10, 45),
-                Width = 200,
-                TextColor = Color.White,
-                Parent = _renameDialogWindow
-            };
-
-            // Name textbox
-            _renameTextBox = new TextBox
-            {
-                Location = new Point(10, 65),
-                Width = 330,
-                MaxLength = 30,
-                Parent = _renameDialogWindow
-            };
-
-            // Save button
-            var saveButton = new StandardButton
-            {
-                Text = "Save",
-                Width = 80,
-                Location = new Point(170, 100),
-                Parent = _renameDialogWindow
-            };
-            saveButton.Click += (s, e) => SaveListRename();
-
-            // Cancel button
-            var cancelButton = new StandardButton
-            {
-                Text = "Cancel",
-                Width = 80,
-                Location = new Point(260, 100),
-                Parent = _renameDialogWindow
-            };
-            cancelButton.Click += (s, e) => _renameDialogWindow.Hide();
-        }
-
-        private void SaveListRename()
-        {
-            string newName = _renameTextBox.Text.Trim();
-
-            if (string.IsNullOrEmpty(newName))
-            {
-                ScreenNotification.ShowNotification(
-                    "LT Messages: List name cannot be empty",
-                    ScreenNotification.NotificationType.Error);
-                return;
-            }
-
-            // Update the list name
-            _listNames[_currentListIndex] = newName;
-            SaveInternalData();
-
-            // Update dropdown to show new name
-            _listSelectorDropdown.Items.Clear();
-            for (int i = 0; i < MessageListCount; i++)
-            {
-                _listSelectorDropdown.Items.Add(GetListDisplayName(i));
-            }
-            _listSelectorDropdown.SelectedItem = GetListDisplayName(_currentListIndex);
-
-            _renameDialogWindow.Hide();
-
-            ScreenNotification.ShowNotification(
-                $"LT Messages: List renamed to '{newName}'",
-                ScreenNotification.NotificationType.Info);
-            Logger.Info($"Renamed list {_currentListIndex} to '{newName}'");
-        }
-
-        private Panel _helpDialogWindow;
-
-        private void ShowHelpDialog()
-        {
-            if (_helpDialogWindow == null)
-            {
-                CreateHelpDialog();
-            }
-
-            // Center on screen
-            int x = (GameService.Graphics.SpriteScreen.Width - _helpDialogWindow.Width) / 2;
-            int y = (GameService.Graphics.SpriteScreen.Height - _helpDialogWindow.Height) / 2;
-            _helpDialogWindow.Location = new Point(x, y);
-
-            _helpDialogWindow.Show();
-        }
-
-        private void CreateHelpDialog()
-        {
-            _helpDialogWindow = new Panel
-            {
-                Size = new Point(600, 500),
-                ZIndex = 10003,
-                Parent = GameService.Graphics.SpriteScreen,
-                BackgroundColor = new Color(25, 20, 15, 250),
-                ShowBorder = true,
-                CanScroll = false
-            };
-
-            // Title
-            new Label
-            {
-                Text = "LT Messages - Help",
-                Font = GameService.Content.DefaultFont18,
-                AutoSizeHeight = true,
-                AutoSizeWidth = true,
-                Location = new Point(10, 10),
-                TextColor = new Color(220, 200, 150, 255),
-                Parent = _helpDialogWindow
-            };
-
-            // Close button (top right, next to title)
-            var closeButton = new StandardButton
-            {
-                Text = "Close",
-                Width = 80,
-                Location = new Point(510, 8),
-                Parent = _helpDialogWindow
-            };
-            closeButton.Click += (s, e) => _helpDialogWindow.Hide();
-
-            // Scrollable content panel
-            var contentPanel = new Panel
-            {
-                Location = new Point(10, 45),
-                Size = new Point(580, 445),
-                Parent = _helpDialogWindow,
-                CanScroll = true,
-                ShowBorder = false
-            };
-
-            // Help content
-            var helpText = @"QUICK START
-• Left-click [LT] icon to see your messages
-• Click a message to send it
-• Right-click [LT] icon to open this editor
-
-MODULE SETTINGS
-All operational settings are found in:
-Blish HUD → Manage Modules → LT Messages
-
-CHAT SETTINGS
-
-Chat Focus - How to open chat:
-• Shift+Enter: Opens squad chat directly
-• Enter: Opens last used chat (map, say, etc.)
-
-Chat Action - What to do with message:
-• Send: Automatically types and sends
-• Paste Only: Copies to clipboard (Ctrl+V to paste)
-
-Chat Command - Which channel to send to:
-• Default: Uses your current active channel
-• /squad: Squad broadcast
-• /map: Map chat
-• /party: Party chat
-• /guild: Guild chat
-• /say: Local say
-• /1 through /5: Whisper to party members
-• /g1 through /g6: Guild channels 1-6
-• And more!
-
-COMMON CONFIGURATIONS
-
-For Squad Broadcast:
-• Chat Focus: Shift+Enter
-• Chat Action: Send
-• Chat Command: Default (or /squad)
-
-For Map Chat:
-• Chat Focus: Enter
-• Chat Action: Send
-• Chat Command: /map
-
-For Manual Control (Clipboard):
-• Chat Action: Paste Only
-• (Chat Focus and Command don't matter)
-
-MESSAGE LISTS
-
-• Use 6 different lists for different events
-• Click dropdown to switch lists
-• Click ""Rename"" to give lists custom names
-  (e.g., ""WvW"", ""Metas"", ""HP Trains"")
-
-EDITING MESSAGES
-
-• Add: Create new message
-• Edit: Modify existing message (click in list)
-• Delete: Remove message (click Delete on message)
-• Save: Saves to file automatically
-• Defaults: Restore 30 default commander messages
-
-TYPING DELAY
-
-• Adjust if messages don't send reliably
-• Lower = faster typing (5-40ms recommended)
-• Higher = more reliable on slow systems
-• Default: 40ms works for most people
-
-TROUBLESHOOTING
-
-Messages not sending?
-• Check that LT Mode is enabled
-• Set Chat Action to ""Send""
-• Try higher Typing Delay
-• Verify Chat Command is correct
-
-Need more help?
-• GitHub: github.com/senzal/LTMessages
-• Blish Discord: discord.gg/FYKN3qh
-
----
-
-THANK YOU!
-
-Thanks to the amazing Guild Wars 2 community
-and the Blish HUD community for using and
-creating incredible plugins that make our
-gaming experience even better!
-
-Your support, feedback, and contributions
-help make tools like this possible.
-
-Happy commanding! ♥
-
----
-
-For full documentation, visit the wiki:
-https://github.com/senzal/LTMessages/wiki";
-
-            var helpLabel = new Label
-            {
-                Text = helpText,
-                Location = new Point(5, 5),
-                Width = 555,
-                TextColor = Color.White,
-                Font = GameService.Content.DefaultFont14,
-                Parent = contentPanel,
-                WrapText = true,
-                AutoSizeHeight = true
-            };
-        }
-
         private void SaveMessagesToFile()
         {
             try
             {
-                string filePath = GetFilePathForList(_currentListIndex);
+                string filePath = _messageFilePath.Value;
 
                 // Create directory if it doesn't exist
                 string directory = Path.GetDirectoryName(filePath);
@@ -1949,7 +1354,7 @@ https://github.com/senzal/LTMessages/wiki";
                 var lines = new List<string>
                 {
                     "# ========================================",
-                    $"# LT Messages Configuration File - List {_currentListIndex}",
+                    "# LT Messages Configuration File",
                     "# ========================================",
                     "# ",
                     "# Format: Title,Message",
@@ -1968,10 +1373,10 @@ https://github.com/senzal/LTMessages/wiki";
 
                 File.WriteAllLines(filePath, lines);
 
-                Logger.Info($"Saved {_messages.Count} messages to {filePath} ({GetListDisplayName(_currentListIndex)})");
+                Logger.Info($"Saved {_messages.Count} messages to {filePath}");
 
                 ScreenNotification.ShowNotification(
-                    $"LT Messages: Saved {_messages.Count} messages to {GetListDisplayName(_currentListIndex)}",
+                    $"LT Messages: Saved {_messages.Count} messages",
                     ScreenNotification.NotificationType.Info);
             }
             catch (Exception ex)
@@ -1990,8 +1395,8 @@ https://github.com/senzal/LTMessages/wiki";
                 // Confirm with user first
                 var confirmDialog = new Panel
                 {
-                    Size = new Point(450, 220),
-                    Location = new Point((GameService.Graphics.SpriteScreen.Width - 450) / 2, (GameService.Graphics.SpriteScreen.Height - 220) / 2),
+                    Size = new Point(400, 200),
+                    Location = new Point((GameService.Graphics.SpriteScreen.Width - 400) / 2, (GameService.Graphics.SpriteScreen.Height - 200) / 2),
                     ZIndex = 15000,
                     Parent = GameService.Graphics.SpriteScreen,
                     BackgroundColor = new Color(25, 20, 15, 250),
@@ -2000,25 +1405,21 @@ https://github.com/senzal/LTMessages/wiki";
 
                 new Label
                 {
-                    Text = $"⚠ Load Defaults for {GetListDisplayName(_currentListIndex)}?",
+                    Text = "Restore Default Messages?",
                     Font = GameService.Content.DefaultFont18,
                     AutoSizeHeight = true,
                     AutoSizeWidth = true,
                     Location = new Point(20, 20),
-                    TextColor = new Color(255, 200, 0, 255), // Orange warning
+                    TextColor = new Color(220, 200, 150, 255),
                     ShowShadow = true,
                     Parent = confirmDialog
                 };
 
-                string messageText = (_currentListIndex == 0)
-                    ? $"WARNING: This will replace ALL messages in {GetListDisplayName(_currentListIndex)}\nwith the 30 default messages.\n\nYour current {_messages.Count} message(s) will be lost!\n\nThis action CANNOT be undone."
-                    : $"WARNING: This will replace ALL messages in {GetListDisplayName(_currentListIndex)}\nwith one sample message: 'Stack on Tag'.\n\nYour current {_messages.Count} message(s) will be lost!\n\nThis action CANNOT be undone.";
-
                 new Label
                 {
-                    Text = messageText,
-                    Width = 410,
-                    Height = 100,
+                    Text = "This will replace all your current messages\nwith the 30 default messages.\n\nThis action cannot be undone.",
+                    Width = 360,
+                    Height = 80,
                     Location = new Point(20, 60),
                     TextColor = Color.White,
                     Font = GameService.Content.DefaultFont14,
@@ -2027,9 +1428,9 @@ https://github.com/senzal/LTMessages/wiki";
 
                 var yesButton = new StandardButton
                 {
-                    Text = "Yes, Load Defaults",
-                    Width = 140,
-                    Location = new Point(20, 170),
+                    Text = "Yes, Restore Defaults",
+                    Width = 160,
+                    Location = new Point(20, 150),
                     Parent = confirmDialog
                 };
 
@@ -2037,26 +1438,25 @@ https://github.com/senzal/LTMessages/wiki";
                 {
                     Text = "Cancel",
                     Width = 100,
-                    Location = new Point(170, 170),
+                    Location = new Point(190, 150),
                     Parent = confirmDialog
                 };
 
                 yesButton.Click += (s, e) =>
                 {
-                    // Restore defaults for current list
-                    _messages = (_currentListIndex == 0) ? GetDefaultMessages() : GetSampleMessage();
+                    // Restore defaults
+                    _messages = GetDefaultMessages();
                     RefreshEditorUI();
                     RefreshMessageUI();
                     SaveMessagesToFile();
 
                     confirmDialog.Dispose();
 
-                    int messageCount = _messages.Count;
                     ScreenNotification.ShowNotification(
-                        $"LT Messages: Loaded {messageCount} default message(s) for {GetListDisplayName(_currentListIndex)}",
+                        "LT Messages: Restored 30 default messages",
                         ScreenNotification.NotificationType.Info);
 
-                    Logger.Info($"Loaded default messages for {GetListDisplayName(_currentListIndex)}");
+                    Logger.Info("Restored default messages");
                 };
 
                 noButton.Click += (s, e) => confirmDialog.Dispose();
@@ -2065,116 +1465,7 @@ https://github.com/senzal/LTMessages/wiki";
             {
                 Logger.Error(ex, "Failed to restore default messages");
                 ScreenNotification.ShowNotification(
-                    "LT Messages: Failed to load defaults",
-                    ScreenNotification.NotificationType.Error);
-            }
-        }
-
-        private void ResetAllListsToDefaults()
-        {
-            try
-            {
-                // STRONG warning - this resets ALL lists
-                var confirmDialog = new Panel
-                {
-                    Size = new Point(500, 280),
-                    Location = new Point((GameService.Graphics.SpriteScreen.Width - 500) / 2, (GameService.Graphics.SpriteScreen.Height - 280) / 2),
-                    ZIndex = 15000,
-                    Parent = GameService.Graphics.SpriteScreen,
-                    BackgroundColor = new Color(40, 10, 10, 250), // Red tint for danger
-                    ShowBorder = true
-                };
-
-                new Label
-                {
-                    Text = "⚠⚠⚠ RESET ALL LISTS? ⚠⚠⚠",
-                    Font = GameService.Content.DefaultFont18,
-                    AutoSizeHeight = true,
-                    AutoSizeWidth = true,
-                    Location = new Point(20, 20),
-                    TextColor = new Color(255, 100, 100, 255), // Bright red
-                    ShowShadow = true,
-                    Parent = confirmDialog
-                };
-
-                new Label
-                {
-                    Text = "DANGER: This will reset ALL 6 message lists (0-5)\nback to their default states!\n\n• List 0: 30 default messages\n• Lists 1-5: Single sample message\n\nALL your custom messages in ALL lists will be lost!\n\nThis action CANNOT be undone!\n\nAre you absolutely sure?",
-                    Width = 460,
-                    Height = 160,
-                    Location = new Point(20, 60),
-                    TextColor = Color.White,
-                    Font = GameService.Content.DefaultFont14,
-                    Parent = confirmDialog
-                };
-
-                var yesButton = new StandardButton
-                {
-                    Text = "YES, RESET ALL LISTS",
-                    Width = 180,
-                    Location = new Point(20, 230),
-                    Parent = confirmDialog
-                };
-
-                var noButton = new StandardButton
-                {
-                    Text = "Cancel (Recommended)",
-                    Width = 160,
-                    Location = new Point(210, 230),
-                    Parent = confirmDialog
-                };
-
-                yesButton.Click += (s, e) =>
-                {
-                    try
-                    {
-                        // Reset all lists to defaults
-                        for (int i = 0; i < MessageListCount; i++)
-                        {
-                            string filePath = GetFilePathForList(i);
-
-                            // Create directory if needed
-                            string directory = Path.GetDirectoryName(filePath);
-                            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-                            {
-                                Directory.CreateDirectory(directory);
-                            }
-
-                            // Create default file for this list
-                            CreateDefaultMessageFile(filePath, i);
-                            Logger.Info($"Reset List {i} to defaults");
-                        }
-
-                        // Reload the current list being edited
-                        LoadMessagesFromFile();
-                        RefreshEditorUI();
-                        RefreshMessageUI();
-
-                        confirmDialog.Dispose();
-
-                        ScreenNotification.ShowNotification(
-                            "LT Messages: All lists reset to defaults!",
-                            ScreenNotification.NotificationType.Info);
-
-                        Logger.Info("Reset all message lists to defaults");
-                    }
-                    catch (Exception resetEx)
-                    {
-                        Logger.Error(resetEx, "Failed to reset all lists");
-                        ScreenNotification.ShowNotification(
-                            "LT Messages: Failed to reset all lists",
-                            ScreenNotification.NotificationType.Error);
-                        confirmDialog.Dispose();
-                    }
-                };
-
-                noButton.Click += (s, e) => confirmDialog.Dispose();
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Failed to show reset dialog");
-                ScreenNotification.ShowNotification(
-                    "LT Messages: Failed to show reset dialog",
+                    "LT Messages: Failed to restore defaults",
                     ScreenNotification.NotificationType.Error);
             }
         }
@@ -2198,7 +1489,7 @@ https://github.com/senzal/LTMessages/wiki";
                 return;
             }
 
-            if (_chatAction.Value == ChatAction.Send)
+            if (_autoSendEnabled.Value)
             {
                 SendMessageAutomatic(message);
             }
@@ -2215,15 +1506,14 @@ https://github.com/senzal/LTMessages/wiki";
                 string originalClipboard = null;
                 string clipboardText;
 
-                // Build message with chat command if specified
-                string commandString = GetChatCommandString(_chatCommand.Value);
-                if (!string.IsNullOrEmpty(commandString))
+                // Determine what to copy based on chat method
+                if (_chatMethod.Value == ChatMethod.SlashCommand)
                 {
-                    clipboardText = $"{commandString} {message.Message}";
+                    string command = _chatCommand.Value == ChatCommand.Squad ? "squad" : "subgroup";
+                    clipboardText = $"/{command} {message.Message}";
                 }
                 else
                 {
-                    // Default - just the message, will use whatever chat is active
                     clipboardText = message.Message;
                 }
 
@@ -2294,41 +1584,39 @@ https://github.com/senzal/LTMessages/wiki";
                     // Wait for focus to settle
                     await Task.Delay(100);
 
-                    // Build the message to type (command + message, or just message)
-                    string commandString = GetChatCommandString(_chatCommand.Value);
-                    string fullMessage;
-
-                    if (!string.IsNullOrEmpty(commandString))
+                    if (_chatMethod.Value == ChatMethod.SlashCommand)
                     {
-                        fullMessage = $"{commandString} {message.Message}";
-                        Logger.Info($"Sending message: {fullMessage}");
+                        // Use Shift+/ command method
+                        string command = _chatCommand.Value == ChatCommand.Squad ? "squad" : "subgroup";
+                        Logger.Info($"Sending message: /{command} {message.Message}");
+
+                        // Open chat with "/" (Shift+/)
+                        Logger.Debug("Sending Shift+/ to open chat with /");
+                        SendKeyPress(VK_SLASH, shift: true);
+
+                        // Wait for chat box to fully open and be ready
+                        await Task.Delay(150);
+
+                        // Type "squad [message]" or "subgroup [message]" character by character
+                        Logger.Debug($"Typing: {command} {message.Message}");
+                        await TypeString($"{command} {message.Message}");
                     }
                     else
                     {
-                        fullMessage = message.Message;
-                        Logger.Info($"Sending message to active channel: {message.Message}");
-                    }
+                        // Use Shift+Enter direct squad chat method
+                        Logger.Info($"Sending message to squad chat: {message.Message}");
 
-                    // Open chat based on focus setting
-                    if (_chatFocus.Value == ChatFocus.ShiftEnter)
-                    {
                         // Open squad chat (Shift+Enter)
                         Logger.Debug("Sending Shift+Enter to open squad chat");
                         SendKeyPress(VK_RETURN, shift: true);
-                    }
-                    else
-                    {
-                        // Open last used chat (Enter)
-                        Logger.Debug("Sending Enter to open last used chat");
-                        SendKeyPress(VK_RETURN);
-                    }
 
-                    // Wait for chat box to fully open and be ready
-                    await Task.Delay(150);
+                        // Wait for chat box to fully open and be ready
+                        await Task.Delay(150);
 
-                    // Type the full message (with command if specified)
-                    Logger.Debug($"Typing: {fullMessage}");
-                    await TypeString(fullMessage, (int)_sendDelay.Value);
+                        // Type message character by character
+                        Logger.Debug($"Typing: {message.Message}");
+                        await TypeString(message.Message);
+                    }
 
                     // Brief wait before sending
                     await Task.Delay(50);
