@@ -1374,8 +1374,8 @@ namespace LTMessages
 
             // All buttons same size (70px) for consistency
 
-            // Top row: [Defaults] [Reset All] [Add] [Close]
-            // Defaults button
+            // Top row: Left: [Defaults] [Reset All]  Right: [Add] [Close]
+            // Defaults button (left side)
             var defaultButton = new StandardButton
             {
                 Text = "Defaults",
@@ -1385,7 +1385,7 @@ namespace LTMessages
             };
             defaultButton.Click += (s, e) => RestoreDefaultMessages();
 
-            // Reset All button
+            // Reset All button (left side)
             var resetButton = new StandardButton
             {
                 Text = "Reset All",
@@ -1395,43 +1395,43 @@ namespace LTMessages
             };
             resetButton.Click += (s, e) => ResetAllListsToDefaults();
 
-            // Add button
+            // Add button (right side)
             var addButton = new StandardButton
             {
                 Text = "Add",
                 Width = 70,
-                Location = new Point(330, 8),
+                Location = new Point(340, 8),
                 Parent = _editorWindow
             };
             addButton.Click += (s, e) => ShowEditDialog(-1, null);
 
-            // Close button
+            // Close button (right side)
             var closeButton = new StandardButton
             {
                 Text = "Close",
                 Width = 70,
-                Location = new Point(410, 8),
+                Location = new Point(420, 8),
                 Parent = _editorWindow
             };
             closeButton.Click += (s, e) => CloseEditor();
 
-            // Bottom row: [Dropdown] [Rename] [Help]
-            // Rename List button
+            // Bottom row: [Dropdown] [Rename]  (right side) [Help]
+            // Rename button (next to dropdown)
             var renameButton = new StandardButton
             {
                 Text = "Rename",
                 Width = 70,
-                Location = new Point(250, 40),
+                Location = new Point(170, 40),
                 Parent = _editorWindow
             };
             renameButton.Click += (s, e) => ShowRenameListDialog();
 
-            // Help button
+            // Help button (under Close, right-aligned)
             var helpButton = new StandardButton
             {
                 Text = "Help",
                 Width = 70,
-                Location = new Point(330, 40),
+                Location = new Point(420, 40),
                 Parent = _editorWindow
             };
             helpButton.Click += (s, e) => ShowHelpDialog();
