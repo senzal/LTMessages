@@ -1072,7 +1072,7 @@ namespace LTMessages
                 Text = "X",
                 Width = 25,
                 Height = 25,
-                Location = new Point(_popupWindow.Width - 30, 5),
+                Location = new Point(_popupWindow.Width - 35, 5),
                 Parent = _popupWindow,
                 ZIndex = 10
             };
@@ -1084,7 +1084,7 @@ namespace LTMessages
                 WidthSizingMode = SizingMode.Fill,
                 HeightSizingMode = SizingMode.Fill,
                 CanScroll = true,
-                Location = new Point(8, 40),
+                Location = new Point(6, 40),
                 Size = new Point(204, 260),
                 Parent = _popupWindow,
                 OuterControlPadding = new Vector2(5, 10),
@@ -1172,7 +1172,7 @@ namespace LTMessages
                 _popupWindow.Size = new Point(220, popupHeight);
 
                 // Update close button position (top-right corner)
-                _popupCloseButton.Location = new Point(_popupWindow.Width - 30, 5);
+                _popupCloseButton.Location = new Point(_popupWindow.Width - 35, 5);
 
                 // Force the flow panel to recalculate its content size and scrollbar
                 _messageFlowPanel.Invalidate();
