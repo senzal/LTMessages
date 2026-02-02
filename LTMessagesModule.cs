@@ -110,6 +110,7 @@ namespace LTMessages
         private TextBox _editMessageTextBox;
         private MessageEntry _editingMessage;
         private int _editingMessageIndex = -1;
+        private bool _suppressListSwitchWarning = false; // Flag to suppress unsaved changes warning
 
         // Data
         private List<MessageEntry> _messages = new List<MessageEntry>();
@@ -982,9 +983,12 @@ namespace LTMessages
                 _cornerIcon.Click += OnCornerIconClicked;
                 _cornerIcon.RightMouseButtonPressed += OnCornerIconRightClicked;
 
-                // Update tooltip based on LT mode
+                // Update tooltip based on LT mode and chat settings
                 UpdateCornerIconTooltip();
                 _ltModeEnabled.SettingChanged += (s, e) => UpdateCornerIconTooltip();
+                _chatFocus.SettingChanged += (s, e) => UpdateCornerIconTooltip();
+                _chatAction.SettingChanged += (s, e) => UpdateCornerIconTooltip();
+                _chatCommand.SettingChanged += (s, e) => UpdateCornerIconTooltip();
 
                 Logger.Info("Corner icon created");
             }
@@ -999,7 +1003,40 @@ namespace LTMessages
             if (_cornerIcon != null)
             {
                 string status = _ltModeEnabled.Value ? "ENABLED" : "DISABLED";
-                _cornerIcon.BasicTooltipText = $"LT Messages\nLeft-click: Show messages\nRight-click: Open editor\nLT Mode: {status}";
+
+                // Get friendly names for mode settings
+                string focus = _chatFocus.Value == ChatFocus.ShiftEnter ? "Shift+Enter" : "Enter";
+                string action = _chatAction.Value == ChatAction.Send ? "Send" : "Paste";
+                string command = GetChatCommandDisplayName(_chatCommand.Value);
+
+                _cornerIcon.BasicTooltipText = $"LT Messages\nLeft-click: Show messages\nRight-click: Open editor\nLT Mode: {status}\nMode: {focus} | {action} | {command}";
+            }
+        }
+
+        private string GetChatCommandDisplayName(ChatCommand command)
+        {
+            switch (command)
+            {
+                case ChatCommand.Default: return "Default";
+                case ChatCommand.Squad: return "Squad";
+                case ChatCommand.Subgroup: return "Subgroup";
+                case ChatCommand.Map: return "Map";
+                case ChatCommand.Say: return "Say";
+                case ChatCommand.Party: return "Party";
+                case ChatCommand.Team: return "Team";
+                case ChatCommand.Guild: return "Guild";
+                case ChatCommand.Guild1: return "Guild1";
+                case ChatCommand.Guild2: return "Guild2";
+                case ChatCommand.Guild3: return "Guild3";
+                case ChatCommand.Guild4: return "Guild4";
+                case ChatCommand.Guild5: return "Guild5";
+                case ChatCommand.Guild6: return "Guild6";
+                case ChatCommand.Party1: return "Party1";
+                case ChatCommand.Party2: return "Party2";
+                case ChatCommand.Party3: return "Party3";
+                case ChatCommand.Party4: return "Party4";
+                case ChatCommand.Party5: return "Party5";
+                default: return command.ToString();
             }
         }
 
@@ -1035,7 +1072,7 @@ namespace LTMessages
                 Text = "X",
                 Width = 25,
                 Height = 25,
-                Location = new Point(_popupWindow.Width - 30, 5),
+                Location = new Point(_popupWindow.Width - 35, 5),
                 Parent = _popupWindow,
                 ZIndex = 10
             };
@@ -1047,11 +1084,11 @@ namespace LTMessages
                 WidthSizingMode = SizingMode.Fill,
                 HeightSizingMode = SizingMode.Fill,
                 CanScroll = true,
-                Location = new Point(5, 35),
-                Size = new Point(210, 260),
+                Location = new Point(6, 40),
+                Size = new Point(204, 260),
                 Parent = _popupWindow,
-                OuterControlPadding = new Vector2(8, 8),
-                ControlPadding = new Vector2(0, 2)
+                OuterControlPadding = new Vector2(5, 10),
+                ControlPadding = new Vector2(0, 3)
             };
 
             // Add click handler to screen to close popup when clicking outside
@@ -1074,8 +1111,8 @@ namespace LTMessages
                     var label = new Label
                     {
                         Text = message.Title,
-                        Width = 200,
-                        Height = 26,
+                        Width = 194,
+                        Height = 28,
                         TextColor = new Color(220, 200, 150, 255),  // GW2 gold color
                         Font = GameService.Content.DefaultFont16,
                         ShowShadow = true,
@@ -1111,6 +1148,34 @@ namespace LTMessages
                         label.TextColor = new Color(220, 200, 150, 255);
                     };
                 }
+
+                // Calculate dynamic height based on message count (max 15 items visible)
+                // Minimum 3 message spaces even when list is empty/short
+                int itemCount = _messages.Count;
+                int visibleItems = Math.Min(itemCount, 15);
+                int itemHeight = 28; // Height of each message label
+                int itemPadding = 3; // Padding between items
+                int outerPadding = 20; // Top and bottom padding (10+10 for nice border spacing)
+
+                // Calculate flow panel height
+                int flowPanelHeight = (visibleItems * (itemHeight + itemPadding)) + outerPadding;
+
+                // Minimum height to show at least 3 items (even for 0, 1, or 2 messages)
+                int minFlowPanelHeight = (3 * (itemHeight + itemPadding)) + outerPadding;
+                flowPanelHeight = Math.Max(flowPanelHeight, minFlowPanelHeight);
+
+                // Update flow panel size
+                _messageFlowPanel.Size = new Point(204, flowPanelHeight);
+
+                // Update popup window height (header 40px + flow panel + bottom padding 10px)
+                int popupHeight = 40 + flowPanelHeight + 10;
+                _popupWindow.Size = new Point(220, popupHeight);
+
+                // Update close button position (top-right corner)
+                _popupCloseButton.Location = new Point(_popupWindow.Width - 35, 5);
+
+                // Force the flow panel to recalculate its content size and scrollbar
+                _messageFlowPanel.Invalidate();
             }
         }
 
@@ -1195,19 +1260,11 @@ namespace LTMessages
 
             try
             {
+                // Refresh the UI to ensure proper sizing
+                RefreshMessageUI();
+
                 // Get mouse position
                 var mousePos = GameService.Input.Mouse.Position;
-
-                // Adjust window size based on content (add 40 for close button area at top)
-                int itemHeight = 25;
-                int windowHeight = Math.Min(_messages.Count * itemHeight + 60, 440);
-                _popupWindow.Size = new Point(200, windowHeight);
-
-                // Update close button position to match new window width
-                if (_popupCloseButton != null)
-                {
-                    _popupCloseButton.Location = new Point(_popupWindow.Width - 30, 5);
-                }
 
                 // Position at cursor, but keep on screen
                 int x = mousePos.X;
@@ -1304,6 +1361,22 @@ namespace LTMessages
             // Handle dropdown selection change
             _listSelectorDropdown.ValueChanged += (s, e) =>
             {
+                // Check if there are unsaved changes
+                if (!_suppressListSwitchWarning && _editDialogWindow != null && _editDialogWindow.Visible)
+                {
+                    // Save the target list selection
+                    string targetList = _listSelectorDropdown.SelectedItem;
+
+                    // Revert dropdown to current list (will be changed if user confirms)
+                    _suppressListSwitchWarning = true;
+                    _listSelectorDropdown.SelectedItem = GetListDisplayName(_currentListIndex);
+                    _suppressListSwitchWarning = false;
+
+                    // Show confirmation dialog
+                    ShowUnsavedChangesDialog(targetList);
+                    return;
+                }
+
                 // Find which list index matches the selected name
                 string selected = _listSelectorDropdown.SelectedItem;
                 for (int i = 0; i < MessageListCount; i++)
@@ -1321,8 +1394,8 @@ namespace LTMessages
 
             // All buttons same size (70px) for consistency
 
-            // Top row: [Defaults] [Add] [Save] [Close]
-            // Defaults button (aligned above Reset All)
+            // Top row: Left: [Defaults] [Reset All]  Right: [Add] [Close]
+            // Defaults button (left side)
             var defaultButton = new StandardButton
             {
                 Text = "Defaults",
@@ -1332,63 +1405,53 @@ namespace LTMessages
             };
             defaultButton.Click += (s, e) => RestoreDefaultMessages();
 
-            // Add button
-            var addButton = new StandardButton
-            {
-                Text = "Add",
-                Width = 70,
-                Location = new Point(250, 8),
-                Parent = _editorWindow
-            };
-            addButton.Click += (s, e) => ShowEditDialog(-1, null);
-
-            // Save button
-            var saveButton = new StandardButton
-            {
-                Text = "Save",
-                Width = 70,
-                Location = new Point(330, 8),
-                Parent = _editorWindow
-            };
-            saveButton.Click += (s, e) => SaveMessagesToFile();
-
-            // Close button
-            var closeButton = new StandardButton
-            {
-                Text = "Close",
-                Width = 70,
-                Location = new Point(410, 8),
-                Parent = _editorWindow
-            };
-            closeButton.Click += (s, e) => _editorWindow.Hide();
-
-            // Bottom row: [Dropdown] [Reset All] [Rename] [Help]
-            // Reset All button (aligned below Defaults)
+            // Reset All button (left side)
             var resetButton = new StandardButton
             {
                 Text = "Reset All",
                 Width = 70,
-                Location = new Point(170, 40),
+                Location = new Point(250, 8),
                 Parent = _editorWindow
             };
             resetButton.Click += (s, e) => ResetAllListsToDefaults();
 
-            // Rename List button
+            // Add button (right side)
+            var addButton = new StandardButton
+            {
+                Text = "Add",
+                Width = 70,
+                Location = new Point(340, 8),
+                Parent = _editorWindow
+            };
+            addButton.Click += (s, e) => ShowEditDialog(-1, null);
+
+            // Close button (right side)
+            var closeButton = new StandardButton
+            {
+                Text = "Close",
+                Width = 70,
+                Location = new Point(420, 8),
+                Parent = _editorWindow
+            };
+            closeButton.Click += (s, e) => CloseEditor();
+
+            // Bottom row: [Dropdown] [Rename]  (right side) [Help]
+            // Rename button (next to dropdown)
             var renameButton = new StandardButton
             {
                 Text = "Rename",
                 Width = 70,
-                Location = new Point(250, 40),
+                Location = new Point(170, 40),
                 Parent = _editorWindow
             };
             renameButton.Click += (s, e) => ShowRenameListDialog();
 
-            // Help button
+            // Help button (under Close, right-aligned)
             var helpButton = new StandardButton
             {
                 Text = "Help",
                 Width = 70,
-                Location = new Point(330, 40),
+                Location = new Point(420, 40),
                 Parent = _editorWindow
             };
             helpButton.Click += (s, e) => ShowHelpDialog();
@@ -1413,6 +1476,27 @@ namespace LTMessages
             if (_editorFlowPanel == null) return;
 
             _editorFlowPanel.ClearChildren();
+
+            // Calculate dynamic height based on message count (max 6 items visible for editor)
+            int itemCount = _messages.Count;
+            int visibleItems = Math.Min(itemCount, 6);
+            int itemHeight = 60; // Height of each message panel
+            int itemPadding = 3; // Padding between items
+            int outerPadding = 10; // Top and bottom padding (5+5)
+
+            // Calculate flow panel height
+            int flowPanelHeight = (visibleItems * (itemHeight + itemPadding)) + outerPadding;
+
+            // Minimum height to show at least 3 items, even if list is shorter
+            int minFlowPanelHeight = (3 * (itemHeight + itemPadding)) + outerPadding;
+            flowPanelHeight = Math.Max(flowPanelHeight, minFlowPanelHeight);
+
+            // Update flow panel size
+            _editorFlowPanel.Size = new Point(480, flowPanelHeight);
+
+            // Update editor window height (top area 70px + flow panel + bottom padding 20px)
+            int editorHeight = 70 + flowPanelHeight + 20;
+            _editorWindow.Size = new Point(500, editorHeight);
 
             for (int i = 0; i < _messages.Count; i++)
             {
@@ -1471,6 +1555,9 @@ namespace LTMessages
                 };
                 deleteButton.Click += (s, e) => DeleteMessage(index);
             }
+
+            // Force the flow panel to recalculate its content size and scrollbar
+            _editorFlowPanel.Invalidate();
         }
 
         private void ShowEditDialog(int messageIndex, MessageEntry message)
@@ -1630,6 +1717,7 @@ namespace LTMessages
             _editDialogWindow.Hide();
             RefreshEditorUI();
             RefreshMessageUI();
+            SaveMessagesToFile(); // Auto-save to file when message is saved
         }
 
         private void DeleteMessage(int index)
@@ -1640,6 +1728,218 @@ namespace LTMessages
                 RefreshEditorUI();
                 RefreshMessageUI();
             }
+        }
+
+        private void ShowUnsavedChangesDialog(string targetListName)
+        {
+            // Create confirmation dialog
+            var confirmDialog = new Panel
+            {
+                Size = new Point(450, 180),
+                ZIndex = 10002, // Above edit dialog
+                Parent = GameService.Graphics.SpriteScreen,
+                BackgroundColor = new Color(25, 20, 15, 250),
+                ShowBorder = true
+            };
+
+            // Center on screen
+            int x = (GameService.Graphics.SpriteScreen.Width - confirmDialog.Width) / 2;
+            int y = (GameService.Graphics.SpriteScreen.Height - confirmDialog.Height) / 2;
+            confirmDialog.Location = new Point(x, y);
+
+            // Title
+            new Label
+            {
+                Text = "Unsaved Changes",
+                Font = GameService.Content.DefaultFont16,
+                AutoSizeHeight = true,
+                AutoSizeWidth = true,
+                Location = new Point(10, 10),
+                TextColor = new Color(220, 200, 150, 255),
+                Parent = confirmDialog
+            };
+
+            // Message
+            new Label
+            {
+                Text = "You have unsaved changes in the message editor.\nWhat would you like to do?",
+                Location = new Point(10, 45),
+                Width = 430,
+                Height = 50,
+                TextColor = Color.White,
+                WrapText = true,
+                Parent = confirmDialog
+            };
+
+            // Save and Switch button
+            var saveButton = new StandardButton
+            {
+                Text = "Save & Switch",
+                Width = 130,
+                Location = new Point(10, 130),
+                Parent = confirmDialog
+            };
+            saveButton.Click += (s, e) =>
+            {
+                SaveEditedMessage();
+                confirmDialog.Dispose();
+                SwitchToList(targetListName);
+            };
+
+            // Discard and Switch button
+            var discardButton = new StandardButton
+            {
+                Text = "Discard & Switch",
+                Width = 130,
+                Location = new Point(150, 130),
+                Parent = confirmDialog
+            };
+            discardButton.Click += (s, e) =>
+            {
+                _editDialogWindow.Hide();
+                confirmDialog.Dispose();
+                SwitchToList(targetListName);
+            };
+
+            // Cancel button
+            var cancelButton = new StandardButton
+            {
+                Text = "Cancel",
+                Width = 130,
+                Location = new Point(290, 130),
+                Parent = confirmDialog
+            };
+            cancelButton.Click += (s, e) =>
+            {
+                confirmDialog.Dispose();
+                // Stay on current list - dropdown already reverted
+            };
+
+            confirmDialog.Show();
+        }
+
+        private void SwitchToList(string listName)
+        {
+            // Update dropdown selection and trigger list switch
+            _suppressListSwitchWarning = true;
+            _listSelectorDropdown.SelectedItem = listName;
+            _suppressListSwitchWarning = false;
+
+            // Find which list index matches the selected name
+            for (int i = 0; i < MessageListCount; i++)
+            {
+                if (GetListDisplayName(i) == listName)
+                {
+                    _currentListIndex = i;
+                    Logger.Info($"Switched to editing {listName} (index {i})");
+                    LoadMessagesFromFile();
+                    RefreshEditorUI();
+                    break;
+                }
+            }
+        }
+
+        private void CloseEditor()
+        {
+            // Check if there are unsaved changes in the edit dialog
+            if (_editDialogWindow != null && _editDialogWindow.Visible)
+            {
+                // Show confirmation dialog for closing editor with unsaved changes
+                ShowCloseEditorConfirmation();
+            }
+            else
+            {
+                // No unsaved changes, close normally
+                _editorWindow.Hide();
+            }
+        }
+
+        private void ShowCloseEditorConfirmation()
+        {
+            // Create confirmation dialog
+            var confirmDialog = new Panel
+            {
+                Size = new Point(450, 180),
+                ZIndex = 10002, // Above edit dialog
+                Parent = GameService.Graphics.SpriteScreen,
+                BackgroundColor = new Color(25, 20, 15, 250),
+                ShowBorder = true
+            };
+
+            // Center on screen
+            int x = (GameService.Graphics.SpriteScreen.Width - confirmDialog.Width) / 2;
+            int y = (GameService.Graphics.SpriteScreen.Height - confirmDialog.Height) / 2;
+            confirmDialog.Location = new Point(x, y);
+
+            // Title
+            new Label
+            {
+                Text = "Unsaved Changes",
+                Font = GameService.Content.DefaultFont16,
+                AutoSizeHeight = true,
+                AutoSizeWidth = true,
+                Location = new Point(10, 10),
+                TextColor = new Color(220, 200, 150, 255),
+                Parent = confirmDialog
+            };
+
+            // Message
+            new Label
+            {
+                Text = "You have unsaved changes in the message editor.\nWhat would you like to do?",
+                Location = new Point(10, 45),
+                Width = 430,
+                Height = 50,
+                TextColor = Color.White,
+                WrapText = true,
+                Parent = confirmDialog
+            };
+
+            // Save and Close button
+            var saveButton = new StandardButton
+            {
+                Text = "Save & Close",
+                Width = 130,
+                Location = new Point(10, 130),
+                Parent = confirmDialog
+            };
+            saveButton.Click += (s, e) =>
+            {
+                SaveEditedMessage();
+                confirmDialog.Dispose();
+                _editorWindow.Hide();
+            };
+
+            // Discard and Close button
+            var discardButton = new StandardButton
+            {
+                Text = "Discard & Close",
+                Width = 130,
+                Location = new Point(150, 130),
+                Parent = confirmDialog
+            };
+            discardButton.Click += (s, e) =>
+            {
+                _editDialogWindow.Hide();
+                confirmDialog.Dispose();
+                _editorWindow.Hide();
+            };
+
+            // Cancel button
+            var cancelButton = new StandardButton
+            {
+                Text = "Cancel",
+                Width = 130,
+                Location = new Point(290, 130),
+                Parent = confirmDialog
+            };
+            cancelButton.Click += (s, e) =>
+            {
+                confirmDialog.Dispose();
+                // Stay in editor - don't close
+            };
+
+            confirmDialog.Show();
         }
 
         private TextBox _renameTextBox;
