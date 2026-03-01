@@ -422,6 +422,72 @@ namespace LTMessages
                     });
                 }
             };
+
+            // Button to open documentation website
+            var openDocsButton = settings.DefineSetting(
+                "OpenDocsButton",
+                false,
+                () => "Documentation",
+                () => "Open the full LT Messages documentation at senzall.com/ltmessages");
+
+            openDocsButton.SettingChanged += (s, e) =>
+            {
+                if (e.NewValue && !e.PreviousValue)
+                {
+                    try
+                    {
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = "https://senzall.com/ltmessages",
+                            UseShellExecute = true
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn(ex, "Failed to open documentation link");
+                    }
+
+                    // Reset button
+                    Task.Run(async () =>
+                    {
+                        await Task.Delay(100);
+                        openDocsButton.Value = false;
+                    });
+                }
+            };
+
+            // Button to open Ko-fi support page
+            var openKoFiButton = settings.DefineSetting(
+                "OpenKoFiButton",
+                false,
+                () => "Support on Ko-fi ☕",
+                () => "If LT Messages has been useful, a coffee is always appreciated!");
+
+            openKoFiButton.SettingChanged += (s, e) =>
+            {
+                if (e.NewValue && !e.PreviousValue)
+                {
+                    try
+                    {
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = "https://ko-fi.com/senzall",
+                            UseShellExecute = true
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn(ex, "Failed to open Ko-fi link");
+                    }
+
+                    // Reset button
+                    Task.Run(async () =>
+                    {
+                        await Task.Delay(100);
+                        openKoFiButton.Value = false;
+                    });
+                }
+            };
         }
 
         protected override async Task LoadAsync()
@@ -2198,6 +2264,7 @@ Messages not sending?
 • Verify Chat Command is correct
 
 Need more help?
+• Docs: senzall.com/ltmessages
 • GitHub: github.com/senzal/LTMessages
 • Blish Discord: discord.gg/FYKN3qh
 
@@ -2210,15 +2277,11 @@ and the Blish HUD community for using and
 creating incredible plugins that make our
 gaming experience even better!
 
-Your support, feedback, and contributions
-help make tools like this possible.
+If LT Messages has been useful, you can
+support development on Ko-fi:
+ko-fi.com/senzall ☕
 
-Happy commanding! ♥
-
----
-
-For full documentation, visit the wiki:
-https://github.com/senzal/LTMessages/wiki";
+Happy commanding! ♥";
 
             var helpLabel = new Label
             {
