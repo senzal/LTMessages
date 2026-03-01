@@ -436,18 +436,7 @@ namespace LTMessages
             {
                 if (e.NewValue && !e.PreviousValue)
                 {
-                    try
-                    {
-                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                        {
-                            FileName = "https://senzall.com/ltmessages",
-                            UseShellExecute = true
-                        });
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Warn(ex, "Failed to open documentation link");
-                    }
+                    OpenUrl("https://senzall.com/ltmessages");
 
                     // Reset button
                     Task.Run(async () =>
@@ -469,18 +458,7 @@ namespace LTMessages
             {
                 if (e.NewValue && !e.PreviousValue)
                 {
-                    try
-                    {
-                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                        {
-                            FileName = "https://ko-fi.com/senzall",
-                            UseShellExecute = true
-                        });
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Warn(ex, "Failed to open Ko-fi link");
-                    }
+                    OpenUrl("https://ko-fi.com/senzall");
 
                     // Reset button
                     Task.Run(async () =>
@@ -1579,57 +1557,51 @@ namespace LTMessages
                 Parent = _aboutTabContent
             };
 
+            new Label
+            {
+                Text = "Links open in your browser:",
+                AutoSizeHeight = true,
+                AutoSizeWidth = true,
+                Location = new Point(15, 88),
+                TextColor = new Color(140, 130, 110, 180),
+                Parent = _aboutTabContent
+            };
+
             var docsButton = new StandardButton
             {
                 Text = "📖 Documentation",
                 Width = 160,
-                Location = new Point(15, 100),
+                Location = new Point(15, 108),
                 Parent = _aboutTabContent
             };
-            docsButton.Click += (s, e) =>
-            {
-                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = "https://senzall.com/ltmessages", UseShellExecute = true }); }
-                catch (Exception ex) { Logger.Warn(ex, "Failed to open documentation link"); }
-            };
+            docsButton.Click += (s, e) => OpenUrl("https://senzall.com/ltmessages");
 
             var siteButton = new StandardButton
             {
                 Text = "🌐 senzall.com",
                 Width = 140,
-                Location = new Point(185, 100),
+                Location = new Point(185, 108),
                 Parent = _aboutTabContent
             };
-            siteButton.Click += (s, e) =>
-            {
-                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = "https://senzall.com", UseShellExecute = true }); }
-                catch (Exception ex) { Logger.Warn(ex, "Failed to open senzall.com"); }
-            };
+            siteButton.Click += (s, e) => OpenUrl("https://senzall.com");
 
             var githubButton = new StandardButton
             {
                 Text = "GitHub",
                 Width = 100,
-                Location = new Point(15, 132),
+                Location = new Point(15, 142),
                 Parent = _aboutTabContent
             };
-            githubButton.Click += (s, e) =>
-            {
-                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = "https://github.com/senzal/LTMessages", UseShellExecute = true }); }
-                catch (Exception ex) { Logger.Warn(ex, "Failed to open GitHub link"); }
-            };
+            githubButton.Click += (s, e) => OpenUrl("https://github.com/senzal/LTMessages");
 
             var kofiButton = new StandardButton
             {
                 Text = "☕  Support on Ko-fi",
                 Width = 200,
-                Location = new Point(15, 174),
+                Location = new Point(15, 184),
                 Parent = _aboutTabContent
             };
-            kofiButton.Click += (s, e) =>
-            {
-                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = "https://ko-fi.com/senzall", UseShellExecute = true }); }
-                catch (Exception ex) { Logger.Warn(ex, "Failed to open Ko-fi link"); }
-            };
+            kofiButton.Click += (s, e) => OpenUrl("https://ko-fi.com/senzall");
 
             // ── Tab switching ─────────────────────────────────────────────────────
 
@@ -2832,6 +2804,32 @@ Happy commanding! ♥";
                         ScreenNotification.NotificationType.Error);
                 }
             });
+        }
+
+        private static void OpenUrl(string url)
+        {
+            try
+            {
+                // Allow the browser to steal focus so it appears in front of GW2
+                NativeMethods.AllowSetForegroundWindow(NativeMethods.ASFW_ANY);
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = url,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn(ex, $"Failed to open URL: {url}");
+            }
+        }
+
+        private static class NativeMethods
+        {
+            public const int ASFW_ANY = -1;
+
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            public static extern bool AllowSetForegroundWindow(int dwProcessId);
         }
 
         #endregion
