@@ -1537,7 +1537,7 @@ namespace LTMessages
 
             new Label
             {
-                Text = "v0.9.1  ·  Built by Senzall  ·  MIT Licence",
+                Text = "v1.0.1  ·  Built by Senzall  ·  MIT Licence",
                 Font = GameService.Content.DefaultFont14,
                 AutoSizeHeight = true,
                 AutoSizeWidth = true,
