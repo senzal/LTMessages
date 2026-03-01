@@ -1585,20 +1585,11 @@ namespace LTMessages
             };
             siteButton.Click += (s, e) => OpenUrl("https://senzall.com");
 
-            var githubButton = new StandardButton
-            {
-                Text = "GitHub",
-                Width = 100,
-                Location = new Point(15, 142),
-                Parent = _aboutTabContent
-            };
-            githubButton.Click += (s, e) => OpenUrl("https://github.com/senzal/LTMessages");
-
             var kofiButton = new StandardButton
             {
                 Text = "☕  Support on Ko-fi",
                 Width = 200,
-                Location = new Point(15, 184),
+                Location = new Point(15, 142),
                 Parent = _aboutTabContent
             };
             kofiButton.Click += (s, e) => OpenUrl("https://ko-fi.com/senzall");
