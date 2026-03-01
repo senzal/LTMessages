@@ -4,8 +4,9 @@
 
 Allows LTs and Commanders to send preset squad broadcast messages. Helping squads and LTs literally get the message out!
 
-[![Version](https://img.shields.io/badge/version-0.9.0-blue.svg)](https://github.com/senzal/LTMessages/releases)
+[![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)](https://github.com/senzal/LTMessages/releases)
 [![Blish HUD](https://img.shields.io/badge/Blish%20HUD-1.2.0%2B-orange.svg)](https://blishhud.com/)
+[![Ko-fi](https://img.shields.io/badge/Support_on-Ko--fi-FF5E5B?style=flat&logo=ko-fi&logoColor=white)](https://ko-fi.com/senzall)
 
 ---
 
@@ -24,7 +25,7 @@ This module lets you send these messages with a single click, either automatical
 ## Quick Start
 
 ### Installation
-1. Download `bh.lt.messages_0.9.0.bhm` from [Releases](https://github.com/senzal/LTMessages/releases)
+1. Download `bh.lt.messages_1.0.1.bhm` from [Releases](https://github.com/senzal/LTMessages/releases)
 2. Place it in: `Documents\Guild Wars 2\addons\blishhud\modules\`
 3. Restart Blish HUD
 4. Enable the module
@@ -196,8 +197,13 @@ A: No! Keybinds are completely optional. The corner icon works great on its own.
 
 ## Support & Contributing
 
+- **Documentation**: [senzall.com/ltmessages](https://senzall.com/ltmessages)
 - **Issues or Questions**: [GitHub Issues](https://github.com/senzal/LTMessages/issues)
 - **Blish HUD Discord**: [discord.gg/FYKN3qh](https://discord.gg/FYKN3qh)
+
+If LT Messages has made your squad comms a little smoother, a coffee is always appreciated!
+
+[![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/senzall)
 
 Pull requests are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
@@ -206,6 +212,14 @@ Pull requests are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
+
+**v1.0.1**
+- Two-tab editor: 📝 Editor + ℹ️ About panel with links
+- Ko-fi support link in settings and About tab
+- Documentation link to senzall.com/ltmessages
+- Links now open in front of GW2 (browser focus fix)
+
+**v0.9.1** — Bug fixes and polish
 
 **v0.9.0** (Major Feature Update)
 - Custom list names for organizing messages
