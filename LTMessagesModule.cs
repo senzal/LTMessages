@@ -103,6 +103,8 @@ namespace LTMessages
         private StandardButton _popupCloseButton;
         private FlowPanel _messageFlowPanel;
         private Panel _editorWindow;
+        private Panel _editorTabContent;
+        private Panel _aboutTabContent;
         private FlowPanel _editorFlowPanel;
         private Dropdown _listSelectorDropdown;
         private Panel _editDialogWindow;
@@ -1396,54 +1398,70 @@ namespace LTMessages
                 CanScroll = false
             };
 
-            // Title
-            new Label
+            // ── Tab buttons + Close (always visible at window level) ──────────────
+
+            var editorTabButton = new StandardButton
             {
-                Text = "LT Messages Editor",
-                Font = GameService.Content.DefaultFont18,
-                AutoSizeHeight = true,
-                AutoSizeWidth = true,
-                Location = new Point(10, 10),
-                TextColor = new Color(220, 200, 150, 255),
-                ShowShadow = true,
+                Text = "📝 Editor",
+                Width = 82,
+                Location = new Point(10, 8),
                 Parent = _editorWindow
+            };
+
+            var aboutTabButton = new StandardButton
+            {
+                Text = "ℹ️ About",
+                Width = 75,
+                Location = new Point(100, 8),
+                Parent = _editorWindow
+            };
+
+            var closeButton = new StandardButton
+            {
+                Text = "Close",
+                Width = 70,
+                Location = new Point(420, 8),
+                Parent = _editorWindow
+            };
+            closeButton.Click += (s, e) => CloseEditor();
+
+            // ── Editor tab content ────────────────────────────────────────────────
+
+            _editorTabContent = new Panel
+            {
+                Location = new Point(0, 36),
+                Size = new Point(500, 364),
+                Parent = _editorWindow,
+                CanScroll = false,
+                Visible = true
             };
 
             // List selector dropdown
             _listSelectorDropdown = new Dropdown
             {
-                Location = new Point(10, 40),
+                Location = new Point(10, 4),
                 Width = 150,
-                Parent = _editorWindow
+                Parent = _editorTabContent
             };
 
-            // Populate dropdown with list options (0-5)
             for (int i = 0; i < MessageListCount; i++)
             {
                 _listSelectorDropdown.Items.Add(GetListDisplayName(i));
             }
             _listSelectorDropdown.SelectedItem = GetListDisplayName(_currentListIndex);
 
-            // Handle dropdown selection change
             _listSelectorDropdown.ValueChanged += (s, e) =>
             {
-                // Check if there are unsaved changes
                 if (!_suppressListSwitchWarning && _editDialogWindow != null && _editDialogWindow.Visible)
                 {
-                    // Save the target list selection
                     string targetList = _listSelectorDropdown.SelectedItem;
-
-                    // Revert dropdown to current list (will be changed if user confirms)
                     _suppressListSwitchWarning = true;
                     _listSelectorDropdown.SelectedItem = GetListDisplayName(_currentListIndex);
                     _suppressListSwitchWarning = false;
-
-                    // Show confirmation dialog
                     ShowUnsavedChangesDialog(targetList);
                     return;
                 }
 
-                // Find which list index matches the selected name
                 string selected = _listSelectorDropdown.SelectedItem;
                 for (int i = 0; i < MessageListCount; i++)
                 {
@@ -1458,88 +1476,184 @@ namespace LTMessages
                 }
             };
 
-            // All buttons same size (70px) for consistency
-
-            // Top row: Left: [Defaults] [Reset All]  Right: [Add] [Close]
-            // Defaults button (left side)
             var defaultButton = new StandardButton
             {
                 Text = "Defaults",
                 Width = 70,
-                Location = new Point(170, 8),
-                Parent = _editorWindow
+                Location = new Point(170, 2),
+                Parent = _editorTabContent
             };
             defaultButton.Click += (s, e) => RestoreDefaultMessages();
 
-            // Reset All button (left side)
             var resetButton = new StandardButton
             {
                 Text = "Reset All",
                 Width = 70,
-                Location = new Point(250, 8),
-                Parent = _editorWindow
+                Location = new Point(248, 2),
+                Parent = _editorTabContent
             };
             resetButton.Click += (s, e) => ResetAllListsToDefaults();
 
-            // Add button (right side)
             var addButton = new StandardButton
             {
                 Text = "Add",
                 Width = 70,
-                Location = new Point(340, 8),
-                Parent = _editorWindow
+                Location = new Point(326, 2),
+                Parent = _editorTabContent
             };
             addButton.Click += (s, e) => ShowEditDialog(-1, null);
 
-            // Close button (right side)
-            var closeButton = new StandardButton
-            {
-                Text = "Close",
-                Width = 70,
-                Location = new Point(420, 8),
-                Parent = _editorWindow
-            };
-            closeButton.Click += (s, e) => CloseEditor();
-
-            // Bottom row: [Dropdown] [Rename]  (right side) [Help]
-            // Rename button (next to dropdown)
             var renameButton = new StandardButton
             {
                 Text = "Rename",
                 Width = 70,
-                Location = new Point(170, 40),
-                Parent = _editorWindow
+                Location = new Point(170, 32),
+                Parent = _editorTabContent
             };
             renameButton.Click += (s, e) => ShowRenameListDialog();
 
-            // Help button (under Close, right-aligned)
             var helpButton = new StandardButton
             {
                 Text = "Help",
                 Width = 70,
-                Location = new Point(420, 40),
-                Parent = _editorWindow
+                Location = new Point(416, 32),
+                Parent = _editorTabContent
             };
             helpButton.Click += (s, e) => ShowHelpDialog();
 
-            // Message list panel (below dropdown)
             _editorFlowPanel = new FlowPanel
             {
                 FlowDirection = ControlFlowDirection.SingleTopToBottom,
                 WidthSizingMode = SizingMode.Fill,
                 HeightSizingMode = SizingMode.Fill,
                 CanScroll = true,
-                Location = new Point(10, 70),
+                Location = new Point(10, 65),
                 Size = new Point(480, 315),
-                Parent = _editorWindow,
+                Parent = _editorTabContent,
                 OuterControlPadding = new Vector2(5, 5),
                 ControlPadding = new Vector2(0, 3)
+            };
+
+            // ── About tab content ─────────────────────────────────────────────────
+
+            _aboutTabContent = new Panel
+            {
+                Location = new Point(0, 36),
+                Size = new Point(500, 240),
+                Parent = _editorWindow,
+                CanScroll = false,
+                Visible = false
+            };
+
+            new Label
+            {
+                Text = "LT Messages",
+                Font = GameService.Content.DefaultFont18,
+                AutoSizeHeight = true,
+                AutoSizeWidth = true,
+                Location = new Point(15, 10),
+                TextColor = new Color(220, 200, 150, 255),
+                ShowShadow = true,
+                Parent = _aboutTabContent
+            };
+
+            new Label
+            {
+                Text = "v0.9.1  ·  Built by Senzall  ·  MIT Licence",
+                Font = GameService.Content.DefaultFont14,
+                AutoSizeHeight = true,
+                AutoSizeWidth = true,
+                Location = new Point(15, 42),
+                TextColor = new Color(150, 140, 120, 200),
+                Parent = _aboutTabContent
+            };
+
+            new Label
+            {
+                Text = "No gems, no paywall — tools built by a fellow player.",
+                Font = GameService.Content.DefaultFont14,
+                AutoSizeHeight = true,
+                AutoSizeWidth = true,
+                Location = new Point(15, 64),
+                TextColor = new Color(180, 170, 150, 180),
+                Parent = _aboutTabContent
+            };
+
+            var docsButton = new StandardButton
+            {
+                Text = "📖 Documentation",
+                Width = 160,
+                Location = new Point(15, 100),
+                Parent = _aboutTabContent
+            };
+            docsButton.Click += (s, e) =>
+            {
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = "https://senzall.com/ltmessages", UseShellExecute = true }); }
+                catch (Exception ex) { Logger.Warn(ex, "Failed to open documentation link"); }
+            };
+
+            var siteButton = new StandardButton
+            {
+                Text = "🌐 senzall.com",
+                Width = 140,
+                Location = new Point(185, 100),
+                Parent = _aboutTabContent
+            };
+            siteButton.Click += (s, e) =>
+            {
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = "https://senzall.com", UseShellExecute = true }); }
+                catch (Exception ex) { Logger.Warn(ex, "Failed to open senzall.com"); }
+            };
+
+            var githubButton = new StandardButton
+            {
+                Text = "GitHub",
+                Width = 100,
+                Location = new Point(15, 132),
+                Parent = _aboutTabContent
+            };
+            githubButton.Click += (s, e) =>
+            {
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = "https://github.com/senzal/LTMessages", UseShellExecute = true }); }
+                catch (Exception ex) { Logger.Warn(ex, "Failed to open GitHub link"); }
+            };
+
+            var kofiButton = new StandardButton
+            {
+                Text = "☕  Support on Ko-fi",
+                Width = 200,
+                Location = new Point(15, 174),
+                Parent = _aboutTabContent
+            };
+            kofiButton.Click += (s, e) =>
+            {
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = "https://ko-fi.com/senzall", UseShellExecute = true }); }
+                catch (Exception ex) { Logger.Warn(ex, "Failed to open Ko-fi link"); }
+            };
+
+            // ── Tab switching ─────────────────────────────────────────────────────
+
+            editorTabButton.Click += (s, e) =>
+            {
+                _editorTabContent.Visible = true;
+                _aboutTabContent.Visible = false;
+                RefreshEditorUI();
+            };
+
+            aboutTabButton.Click += (s, e) =>
+            {
+                _editorTabContent.Visible = false;
+                _aboutTabContent.Visible = true;
+                _editorWindow.Size = new Point(500, 276); // 36 tab bar + 240 about content
             };
         }
 
         private void RefreshEditorUI()
         {
             if (_editorFlowPanel == null) return;
+
+            // Don't rebuild while the About tab is showing
+            if (_editorTabContent != null && !_editorTabContent.Visible) return;
 
             _editorFlowPanel.ClearChildren();
 
@@ -1560,9 +1674,12 @@ namespace LTMessages
             // Update flow panel size
             _editorFlowPanel.Size = new Point(480, flowPanelHeight);
 
-            // Update editor window height (top area 70px + flow panel + bottom padding 20px)
-            int editorHeight = 70 + flowPanelHeight + 20;
-            _editorWindow.Size = new Point(500, editorHeight);
+            // Update editor tab content and window height
+            // Tab bar: 36px · Controls: 65px · Flow panel: dynamic · Bottom padding: 15px
+            int tabContentHeight = 65 + flowPanelHeight + 15;
+            if (_editorTabContent != null)
+                _editorTabContent.Size = new Point(500, tabContentHeight);
+            _editorWindow.Size = new Point(500, 36 + tabContentHeight);
 
             for (int i = 0; i < _messages.Count; i++)
             {
